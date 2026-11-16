@@ -86,6 +86,10 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	start := time.Now()
+	window := a.hostnameWindow
+	if window == 0 {
+		window = hostnameWindow
+	}
 	hostChecked := false
 	for {
 		select {
@@ -112,7 +116,7 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 			// device or shell the user went on to from here.
 			if !hostChecked && quiet >= 700*time.Millisecond {
 				hostChecked = true
-				if now.Sub(start) <= hostnameWindow {
+				if now.Sub(start) <= window {
 					a.offerHostname(t, host)
 				}
 			}
@@ -176,7 +180,7 @@ func (p *promptWatch) takeIdleErase() string {
 // still be taken as the device's own: long enough for a slow login (TACACS,
 // MFA on a jump host, automation rules), short enough not to catch a device
 // reached from this one later.
-var hostnameWindow = 30 * time.Second
+const hostnameWindow = 30 * time.Second
 
 // HostnameOffer tells the UI that the device calls itself something else.
 type HostnameOffer struct {

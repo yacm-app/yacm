@@ -65,6 +65,10 @@ type App struct {
 	ctx     context.Context
 	dataDir string
 
+	// hostnameWindow overrides how long after connecting the hostname
+	// offer still looks at the first prompt (tests); zero means 30 s.
+	hostnameWindow time.Duration
+
 	store *store.Store
 	vault *vault.Vault
 	kh    *sshconn.KnownHosts

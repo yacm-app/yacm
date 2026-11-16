@@ -154,9 +154,7 @@ func TestHostnameOfferOnlySoonAfterConnect(t *testing.T) {
 			mu.Unlock()
 		}
 	}
-	old := hostnameWindow
-	hostnameWindow = time.Second
-	t.Cleanup(func() { hostnameWindow = old })
+	a.hostnameWindow = time.Second
 	node, err := a.store.Upsert(&store.Node{Name: "jump", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.9"}})
 	if err != nil {
 		t.Fatal(err)
