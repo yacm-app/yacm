@@ -85,6 +85,7 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 	defer applog.Recover("anti-idle "+t.node.Name, nil)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	start := time.Now()
 	hostChecked := false
 	for {
 		select {
@@ -106,9 +107,14 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 			if !atPrompt || (eng != nil && eng.Active()) {
 				continue
 			}
+			// Only the first prompt after connecting names the device, and
+			// only soon after: a prompt that turns up later may belong to a
+			// device or shell the user went on to from here.
 			if !hostChecked && quiet >= 700*time.Millisecond {
 				hostChecked = true
-				a.offerHostname(t, host)
+				if now.Sub(start) <= hostnameWindow {
+					a.offerHostname(t, host)
+				}
 			}
 			if eff == nil || eff.AntiIdle <= 0 || quiet < 2*time.Second {
 				continue
@@ -165,6 +171,12 @@ func (p *promptWatch) takeIdleErase() string {
 	p.idleTyped = ""
 	return strings.Repeat(eraseKey, n)
 }
+
+// hostnameWindow is how long after connecting the first prompt may come and
+// still be taken as the device's own: long enough for a slow login (TACACS,
+// MFA on a jump host, automation rules), short enough not to catch a device
+// reached from this one later.
+var hostnameWindow = 30 * time.Second
 
 // HostnameOffer tells the UI that the device calls itself something else.
 type HostnameOffer struct {

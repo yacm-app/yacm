@@ -141,6 +141,49 @@ func TestAntiIdleOnlyAtPrompt(t *testing.T) {
 	}
 }
 
+// A prompt that first turns up after the window (the user went on to another
+// device or shell) is not offered as the session's name.
+func TestHostnameOfferOnlySoonAfterConnect(t *testing.T) {
+	a := newTestApp(t)
+	var mu sync.Mutex
+	var events []HostnameOffer
+	a.emitter = func(name string, data any) {
+		if name == "tab:hostname" {
+			mu.Lock()
+			events = append(events, data.(HostnameOffer))
+			mu.Unlock()
+		}
+	}
+	old := hostnameWindow
+	hostnameWindow = time.Second
+	t.Cleanup(func() { hostnameWindow = old })
+	node, err := a.store.Upsert(&store.Node{Name: "jump", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.9"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc := &fakeConn{out: make(chan []byte)}
+	tb := &tab{id: "t2", node: node, state: "connected", conn: fc}
+	tb.eff, _ = a.store.Effective(node)
+	past := time.Now().Add(-time.Minute)
+	tb.watch = promptWatch{lastIn: past, lastOut: past}
+	tb.watch.output([]byte("Last login: Mon Nov 16 10:00:00 2026\r\n"), past)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go a.watchSession(ctx, tb)
+	time.Sleep(2500 * time.Millisecond)
+	// Now a device prompt: the user went on from here with ssh or telnet.
+	tb.mu.Lock()
+	tb.watch.output([]byte("\r\nedge-rtr7#"), past)
+	tb.mu.Unlock()
+	time.Sleep(2500 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 0 {
+		t.Fatalf("hostname offered for a later prompt: %+v", events)
+	}
+}
+
 func TestAntiIdleInheritance(t *testing.T) {
 	a := newTestApp(t)
 	g, _ := a.store.Upsert(&store.Node{Name: "DC", IsGroup: true, Defaults: &store.GroupDefaults{AntiIdle: 300, AntiIdleText: "#"}})
