@@ -347,6 +347,10 @@ Sessions, credential profiles, commands and settings (`sessions.json`), the
 vault (`vault.json`), trusted host keys (`known_hosts`) and session logs
 (`logs`) are kept in one folder: `%AppData%\YACM` (Windows),
 `~/Library/Application Support/YACM` (macOS) or `~/.config/YACM` (Linux).
+The zip and the Microsoft Store version on Windows share this folder.
+Uninstalling YACM, from the Store or otherwise, leaves it in place, so the
+sessions and the vault are still there after a reinstall; to remove them,
+delete the folder (and a data folder you chose yourself, if any).
 
 - **Another folder**: Settings > Data and backups > *Change…* moves
   everything to another folder (another disk, a synced folder, a network
