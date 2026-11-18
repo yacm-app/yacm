@@ -8,6 +8,15 @@
 //   { version: '1.1.0', items: [['Title', 'One or two sentences.'], …] },
 export const WHATS_NEW = [
   {
+    version: '1.0.0',
+    items: [
+      ['YACM 1.0', 'The first stable release, after the public beta. Thank you to everyone who tested it and reported problems.'],
+      ['Session names from the prompt', 'YACM offers the device\'s hostname only from the first prompt within 30 seconds of connecting, so a device or shell you go on to from the session is never offered as its name.'],
+      ['Log file names', 'Settings and the session editor list the {stamp} token (20261113-103743); {name}_{stamp}.txt keeps the default name with a .txt ending.'],
+      ['Microsoft Store', 'The Store version needs Windows 11. It keeps its data in %AppData%\\YACM, shared with the zip version, which runs on Windows 10 and 11.'],
+    ],
+  },
+  {
     version: '0.9.3',
     items: [
       ['Microsoft Store', 'YACM for Windows comes as a Microsoft Store package too, which the Store keeps up to date. It uses the same data folder as the zip version, so sessions and the vault stay where they are.'],

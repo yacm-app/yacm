@@ -15,9 +15,6 @@ your own or thousands with a team: share sessions with your colleagues
 without sharing passwords, and get files onto devices through jump hosts with
 the copy command written for you. Website: [yacm.app](https://yacm.app).
 
-> **Public beta.** Versions 0.9.x are the public beta: until 1.0 they bring
-> fixes only. Please [report problems](https://github.com/yacm-app/yacm/issues).
-
 ![YACM with a session tree, a team library and a Cisco IOS XE session](docs/images/yacm.png)
 
 ## Why YACM

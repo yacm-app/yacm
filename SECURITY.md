@@ -18,7 +18,7 @@ the impact you see.
 
 ## Supported versions
 
-Only the latest release gets security fixes while YACM is below 1.0.
+Only the latest release gets security fixes.
 Release candidates (`-rc.N`) are for testing and get no fixes of their own.
 
 ## Design in short
