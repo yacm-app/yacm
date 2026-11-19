@@ -10,9 +10,9 @@
     "typecheck": "tsc -p jsconfig.json"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.8"
   },
   "dependencies": {
     "@fontsource/barlow-semi-condensed": "^5.3.0",
