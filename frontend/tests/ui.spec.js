@@ -814,6 +814,8 @@ test('one field finds sessions and connects: exact match, only match, address, o
   await expect(hint).toContainText('quick connect to admin@192.0.2.50:2222');
   await page.keyboard.press('Enter');
   expect((await calls(page, 'Connect')).at(-1).args[0].quick).toBe('admin@192.0.2.50:2222');
+  // The new tab takes the keyboard (a moment later on a slow machine).
+  await expect(page.locator('.term:not([hidden]) .xterm-helper-textarea')).toBeFocused();
   // Several matches: Enter moves the choice into the tree, Enter there connects.
   await search.fill('site99');
   await expect(hint).toContainText('choose one of 11 sessions');
@@ -1233,6 +1235,8 @@ test('the mouse wheel moves the tab bar, and the active tab stays in view', asyn
   for (let i = 1; i <= 25; i++) {
     await search.fill(`admin@192.0.2.${i}`);
     await page.keyboard.press('Enter');
+    await expect(page.locator('.tab')).toHaveCount(i);
+    await expect(page.locator('.term:not([hidden]) .xterm-helper-textarea')).toBeFocused();
   }
   await expect(page.locator('.tab')).toHaveCount(25);
   const bar = page.locator('#tabbar');
