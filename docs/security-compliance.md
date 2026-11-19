@@ -88,7 +88,8 @@ SCP) and tunnels listen only while the user switches them on.
 - File servers accept uploads only when switched on, stop after 15 minutes
   without transfers, serve their own folder (no `..` and no symbolic link
   leads out of it) without folder listings unless switched on, can be limited to allowed device
-  addresses, and the SCP server only copies files (no shell).
+  addresses, and the SCP/SFTP server only copies files (no shell, no
+  renaming or removing).
 - Tunnels in sessions that come from someone else's file (an import, a team
   library) are switched off until the user turns them on; team library
   sessions never start tunnels or run local commands by themselves.

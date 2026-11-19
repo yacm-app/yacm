@@ -33,8 +33,8 @@ the copy command written for you. Website: [yacm.app](https://yacm.app).
   with free-space and MD5 checks on Cisco, Arista, Juniper and Linux. And
   `show tech-support` goes straight into a file, typed into the session with
   its enable rights, `--More--` answered.
-- **File servers that write the copy command.** TFTP, HTTP and SCP servers on
-  your computer: YACM writes the `copy` command for IOS, IOS XE, NX-OS,
+- **File servers that write the copy command.** TFTP, HTTP and SCP/SFTP
+  servers on your computer: YACM writes the `copy` command for IOS, IOS XE, NX-OS,
   IOS XR, EOS, Junos or Linux, types it into the session, and opens a reverse
   tunnel when the device sits behind a jump host (or a Linux server behind a
   VPN cannot connect back to you).
@@ -149,7 +149,7 @@ hardware, get the separate demo download for your system
   second MFA login).
 - **Command output to a file**, through the session: `show tech-support` and
   the like, with the pagers of every vendor answered.
-- **TFTP, HTTP and SCP servers** with the command helper, and reverse tunnels
+- **TFTP, HTTP and SCP/SFTP servers** with the command helper, and reverse tunnels
   through jump hosts (or through the SSH session to a server behind a VPN).
 
 ### In the terminal

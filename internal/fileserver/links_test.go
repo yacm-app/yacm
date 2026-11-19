@@ -127,3 +127,31 @@ func TestLinksOutsideTheFolder(t *testing.T) {
 	}
 	onlySecret(t, outside)
 }
+
+func TestLinksOutsideTheFolderSFTP(t *testing.T) {
+	m, _, dir := newManager(t)
+	outside := linkedFolder(t, dir)
+	c, _ := sftpClient(t, m, Config{Folder: dir, AllowUpload: true})
+	for _, p := range []string{"secret", "out/secret.txt", "/out/secret.txt"} {
+		if f, err := c.Open(p); err == nil {
+			b, _ := io.ReadAll(f)
+			f.Close()
+			if strings.Contains(string(b), "secret") {
+				t.Fatalf("sftp read %s through a link", p)
+			}
+		}
+	}
+	if _, err := c.ReadDir("out"); err == nil {
+		t.Fatal("sftp listed a folder through a link")
+	}
+	if f, err := c.Open("inside"); err != nil {
+		t.Fatalf("sftp link inside the folder: %v", err)
+	} else {
+		f.Close()
+	}
+	if f, err := c.Create("out/x.txt"); err == nil {
+		f.Write([]byte("x"))
+		f.Close()
+	}
+	onlySecret(t, outside)
+}

@@ -177,9 +177,10 @@ Hovering shows each label.
   example `show tech-support` into `tech-support_<hostname>_<date>.txt`. A
   list of common commands per vendor (Cisco, Arista, Juniper, Huawei, Linux)
   fills it in; the terminal shows one line saying where the output went.
-- **File servers** (the server icon on the left edge): TFTP, HTTP and SCP
-  servers on this computer for devices that copy by themselves
-  (`copy tftp:`, `copy http:`, `copy scp:`), on one shared folder (by
+- **File servers** (the server icon on the left edge): TFTP, HTTP and
+  SCP/SFTP servers on this computer for devices that copy by themselves
+  (`copy tftp:`, `copy http:`, `copy scp:`, `copy sftp:`; SFTP runs on the
+  SCP server, with the same port and login), on one shared folder (by
   default its own, *YACM file servers* in Downloads, never Downloads or the
   home folder itself), with uploads and HTTP folder listing off until you
   switch them on, allowed device addresses, a generated SCP password and
@@ -437,8 +438,9 @@ reported as described in [SECURITY.md](../SECURITY.md).
   the network, and opens links only on Ctrl+click.
 - File servers run only while switched on (and stop after 15 minutes without
   transfers by default), serve their own folder without `..` escapes and
-  without folder listings unless switched on, and the SCP server only copies
-  files (no shell). TFTP and HTTP have no login: use them on lab and
+  without folder listings unless switched on, and the SCP/SFTP server only
+  copies files (no shell; over SFTP nothing can be renamed or removed, and no
+  folders made). TFTP and HTTP have no login: use them on lab and
   management networks, or limit the allowed addresses.
 - File names from a device are used as plain names: a name with a path in it
   (`../../x`), or on Windows a device name such as `COM1` or `NUL`, is

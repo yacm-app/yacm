@@ -1303,7 +1303,7 @@ function fileItems(t) {
     { label: 'Browse files', action: run('openFilesFromTab'), disabled: !ssh || isNewerType(t.node), title: !ssh ? why : 'Opens a Files tab: this computer and the device side by side' },
     { label: 'Tunnels…', action: () => import('./tunnels.js').then(m => m.openTunnels(t.id)).catch(e => toast(errMsg(e), 'error')), disabled: !ssh, title: ssh ? 'Port forwards through this connection (-L, -R, SOCKS/HTTP proxy)' : 'Needs an SSH session' },
     '-',
-    { label: 'File servers…', action: () => import('./servers.js').then(m => m.openServers({ tabId: t.id })).catch(e => toast(errMsg(e), 'error')), title: 'TFTP, HTTP and SCP servers on this computer the device copies from and to, with the command to type' },
+    { label: 'File servers…', action: () => import('./servers.js').then(m => m.openServers({ tabId: t.id })).catch(e => toast(errMsg(e), 'error')), title: 'TFTP, HTTP and SCP/SFTP servers on this computer the device copies from and to, with the command to type' },
   ];
 }
 

@@ -772,6 +772,15 @@ test('the file servers dialog starts a server and builds the device command', as
   await expect(page.locator('.srv-cmd')).toHaveText('scp yacm@10.1.1.5:/c8000v.bin harddisk:/c8000v.bin');
   await page.locator('.srv-helper select').first().selectOption('nxos');
   await expect(page.locator('.srv-cmd')).toHaveText(/^copy scp:\/\/yacm@10\.1\.1\.5(:\d+)?\/c8000v\.bin bootflash: vrf management$/);
+  // SFTP runs on the SCP server, with its login.
+  await page.getByRole('radio', { name: 'SFTP' }).click();
+  await expect(page.locator('.srv-cmd')).toHaveText(/^copy sftp:\/\/yacm@10\.1\.1\.5(:\d+)?\/c8000v\.bin bootflash: vrf management$/);
+  await expect(page.locator('.srv-helper .hint')).toContainText('Secret123abcd');
+  await page.locator('.srv-helper select').first().selectOption('ios');
+  await expect(page.locator('.srv-cmd')).toHaveText('copy sftp://yacm@10.1.1.5/c8000v.bin flash:');
+  await page.locator('.srv-helper select').first().selectOption('junos');
+  await expect(page.locator('.srv-cmd')).toHaveText(/^file copy scp:\/\/yacm@10\.1\.1\.5(:\d+)?\/c8000v\.bin \/var\/tmp\/$/);
+  await expect(page.locator('.srv-helper .hint')).toContainText('Junos copies over SSH with scp');
   expect(errors).toEqual([]);
 });
 

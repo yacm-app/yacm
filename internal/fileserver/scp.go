@@ -26,7 +26,7 @@ import (
 
 var osStat = os.Stat
 
-// SCP is an SSH server that only copies files (scp -t / -f) in one folder,
+// SCP is an SSH server that only copies files (scp -t / -f, sftp) in one folder,
 // with one generated login. It offers old algorithms too: it runs only while
 // switched on, and older IOS releases know nothing newer.
 type SCP struct {
@@ -221,7 +221,7 @@ func (s *SCP) session(ch ssh.Channel, reqs <-chan *ssh.Request, remote string) {
 			_ = ssh.Unmarshal(r.Payload, &p)
 			if !xfer.IsSCPCommand(p.Cmd) {
 				r.Reply(true, nil)
-				io.WriteString(ch.Stderr(), "This YACM server only copies files with scp.\r\n")
+				io.WriteString(ch.Stderr(), "This YACM server only copies files with scp or sftp.\r\n")
 				ch.SendRequest("exit-status", false, ssh.Marshal(struct{ C uint32 }{1}))
 				return
 			}
@@ -229,9 +229,21 @@ func (s *SCP) session(ch ssh.Channel, reqs <-chan *ssh.Request, remote string) {
 			code := s.handler(remote).Serve(ch, p.Cmd)
 			ch.SendRequest("exit-status", false, ssh.Marshal(struct{ C uint32 }{uint32(code)}))
 			return
+		case "subsystem":
+			var p struct{ Name string }
+			_ = ssh.Unmarshal(r.Payload, &p)
+			if p.Name != "sftp" {
+				r.Reply(false, nil)
+				continue
+			}
+			r.Reply(true, nil)
+			go ssh.DiscardRequests(reqs)
+			s.serveSFTP(ch, remote)
+			ch.SendRequest("exit-status", false, ssh.Marshal(struct{ C uint32 }{0}))
+			return
 		case "shell":
 			r.Reply(true, nil)
-			io.WriteString(ch, "This YACM server only copies files with scp.\r\n")
+			io.WriteString(ch, "This YACM server only copies files with scp or sftp.\r\n")
 			ch.SendRequest("exit-status", false, ssh.Marshal(struct{ C uint32 }{1}))
 			return
 		default:

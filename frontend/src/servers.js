@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
-// File servers: TFTP, HTTP and SCP on this computer, for devices that copy
-// files themselves (copy tftp: flash:, copy flash: scp:). One shared folder,
+// File servers: TFTP, HTTP and SCP/SFTP on this computer, for devices that
+// copy files themselves (copy tftp: flash:, copy flash: scp:). One shared folder,
 // a list of what devices did, and ready commands for the device.
 import { api, on, state } from './api.js';
 import { h, toast, errMsg, openDialog, field, check, seg, confirmDialog } from './ui.js';
@@ -18,8 +18,19 @@ const LS = {
 const KINDS = [
   { kind: 'tftp', label: 'TFTP', port: 69, note: 'UDP, no login: for lab and console networks. Anyone who reaches this computer can use it while it is on.' },
   { kind: 'http', label: 'HTTP', port: 8080, note: 'TCP, no login. Devices download with GET and upload with PUT.' },
-  { kind: 'scp', label: 'SCP', port: 2022, note: 'SSH with a generated password. Encrypted; also works through a jump host tunnel.' },
+  { kind: 'scp', label: 'SCP / SFTP', port: 2022, note: 'SSH with a generated password; devices copy with scp or sftp. Encrypted; also works through a jump host tunnel.' },
 ];
+
+// The protocols the command helper writes commands for: SFTP runs on the
+// SCP server.
+const HELPER_KINDS = [
+  { value: 'tftp', label: 'TFTP' },
+  { value: 'http', label: 'HTTP' },
+  { value: 'scp', label: 'SCP' },
+  { value: 'sftp', label: 'SFTP' },
+];
+/** @param {string} kind */
+const serverOf = kind => kind === 'sftp' ? 'scp' : kind;
 
 let statuses = [];
 const activity = [];
@@ -76,8 +87,8 @@ const PLATFORMS = [
   { value: 'linux', label: 'Linux' },
 ];
 
-// Platforms that take no port in an scp:// address (the SCP server then
-// needs port 22).
+// Platforms that take no port in an scp:// or sftp:// address (the SCP
+// server then needs port 22).
 const SCP_NO_PORT = new Set(['ios', 'iosxr', 'eos']);
 
 // deviceCommand builds the command a device types: dir "get" copies from
@@ -85,27 +96,30 @@ const SCP_NO_PORT = new Set(['ios', 'iosxr', 'eos']);
 /** @param {{ platform: string, kind: string, dir: string, ip: string, port: number, file?: string, user?: string, dest?: string }} o */
 export function deviceCommand({ platform, kind, dir, ip, port, file, user, dest }) {
   const host = ip.includes(':') ? `[${ip}]` : ip;
-  const def = { tftp: 69, http: 80, scp: 22 }[kind];
+  const def = { tftp: 69, http: 80, scp: 22, sftp: 22 }[kind];
+  const ssh = kind === 'scp' || kind === 'sftp';
   const hp = port && port !== def ? `${host}:${port}` : host;
   const f = file || 'FILE';
   const enc = encodeURIComponent(f).replace(/%2F/g, '/');
   if (platform === 'linux') {
     if (kind === 'http') return dir === 'get' ? `curl -fO http://${hp}/${enc}` : `curl -fT ${f} http://${hp}/`;
     if (kind === 'tftp') return dir === 'get' ? `tftp ${host}${port !== 69 ? ` ${port}` : ''} -m binary -c get ${f}` : `tftp ${host}${port !== 69 ? ` ${port}` : ''} -m binary -c put ${f}`;
+    if (kind === 'sftp') return dir === 'get' ? `sftp -P ${port} ${user}@${host}:${f}` : `echo 'put ${f}' | sftp -P ${port} ${user}@${host}`;
     return dir === 'get' ? `scp -P ${port} ${user}@${host}:${f} .` : `scp -P ${port} ${f} ${user}@${host}:`;
   }
   if (platform === 'junos') {
+    // Junos copies over SSH with scp only.
     const local = dest || '/var/tmp/';
-    const url = kind === 'scp' ? `scp://${user}@${hp}/${f}` : `${kind}://${hp}/${enc}`;
+    const url = ssh ? `scp://${user}@${hp}/${f}` : `${kind}://${hp}/${enc}`;
     return dir === 'get' ? `file copy ${url} ${local}` : `file copy ${local.replace(/\/?$/, '/')}${f} ${url}`;
   }
   const fs = dest || { nxos: 'bootflash:', iosxr: 'harddisk:' }[platform] || 'flash:';
-  if (platform === 'iosxr' && kind === 'scp') {
-    // IOS XR copies over SCP with its own scp command.
-    return dir === 'get' ? `scp ${user}@${host}:/${f} ${fs}/${f}` : `scp ${fs}/${f} ${user}@${host}:/${f}`;
+  if (platform === 'iosxr' && ssh) {
+    // IOS XR copies over SSH with its own scp and sftp commands.
+    return dir === 'get' ? `${kind} ${user}@${host}:/${f} ${fs}/${f}` : `${kind} ${fs}/${f} ${user}@${host}:/${f}`;
   }
   const vrf = platform === 'nxos' ? ' vrf management' : '';
-  const url = kind === 'scp' ? `scp://${user}@${SCP_NO_PORT.has(platform) ? host : hp}/${f}` : `${kind}://${hp}/${enc}`;
+  const url = ssh ? `${kind}://${user}@${SCP_NO_PORT.has(platform) ? host : hp}/${f}` : `${kind}://${hp}/${enc}`;
   return dir === 'get' ? `copy ${url} ${fs}${vrf}` : `copy ${fs}${f} ${url}${vrf}`;
 }
 
@@ -114,9 +128,11 @@ export function deviceCommand({ platform, kind, dir, ip, port, file, user, dest 
 export function deviceNotes(platform, kind, port) {
   const notes = [];
   const name = PLATFORMS.find(p => p.value === platform)?.label || platform;
-  if (kind === 'scp' && SCP_NO_PORT.has(platform) && port !== 22) notes.push(`${name} cannot give a port for SCP: set the SCP server to port 22 (if nothing else uses it) or use HTTP.`);
+  const ssh = kind === 'scp' || kind === 'sftp';
+  if (ssh && SCP_NO_PORT.has(platform) && port !== 22) notes.push(`${name} cannot give a port for ${kind.toUpperCase()}: set the SCP / SFTP server to port 22 (if nothing else uses it) or use HTTP.`);
+  if (kind === 'sftp' && platform === 'junos') notes.push('Junos copies over SSH with scp: the command uses SCP on the same server and login.');
   if (platform === 'ios') {
-    const cmd = { tftp: 'ip tftp source-interface', http: 'ip http client source-interface', scp: 'ip ssh source-interface' }[kind];
+    const cmd = { tftp: 'ip tftp source-interface', http: 'ip http client source-interface', scp: 'ip ssh source-interface', sftp: 'ip ssh source-interface' }[kind];
     if (cmd) notes.push(`Through the management port (VRF Mgmt-intf on ISR and ASR routers, Mgmt-vrf on Catalyst 9000): configure ${cmd} GigabitEthernet0 first (Catalyst 9000: GigabitEthernet0/0).`);
   }
   if (platform === 'iosxr') notes.push('Through a management VRF: add the VRF at the end, for example … harddisk: vrf MGMT.');
@@ -301,18 +317,19 @@ export async function openServers({ tabId } = {}) {
   const via = {}; // kind -> tunnel through the jump host { address, port, reachable, note }
   const tunBtn = h('button', { type: 'button', class: 'btn small', on: { click: async () => {
     try {
-      via[kindSel] = await api.FileServerViaTunnel(tab.id, kindSel);
-      if (via[kindSel].note) toast(via[kindSel].note, 'error', 12000);
+      via[serverOf(kindSel)] = await api.FileServerViaTunnel(tab.id, serverOf(kindSel));
+      if (via[serverOf(kindSel)].note) toast(via[serverOf(kindSel)].note, 'error', 12000);
     } catch (e) { toast(errMsg(e), 'error', 9000); }
     paintHelper();
   } } });
   const paintHelper = () => {
-    const st = statuses.find(s => s.kind === kindSel);
+    const srv = serverOf(kindSel);
+    const st = statuses.find(s => s.kind === srv);
     // A directly connected SSH session can carry the tunnel itself: for a
     // server behind VPN or NAT that cannot connect to this computer.
     const direct = !route?.jump && tab?.node.session?.protocol === 'ssh' && tab.state === 'connected';
-    const tun = st?.running && (route?.jump || direct) ? via[kindSel] : null;
-    const port = tun ? tun.port : st?.running ? st.port : Number(ports[kindSel].value);
+    const tun = st?.running && (route?.jump || direct) ? via[srv] : null;
+    const port = tun ? tun.port : st?.running ? st.port : Number(ports[srv].value);
     const ip = tun ? tun.address : ipSel.value || '<this computer>';
     // Devices end a file name at a space: the command asks for the name with
     // underscores, and YACM's servers send the file with spaces for it.
@@ -324,10 +341,10 @@ export async function openServers({ tabId } = {}) {
     out.textContent = cmd;
     const notes = [];
     if (spaced) notes.push(`Devices end a file name at a space, so the command asks for ${base.replace(/\s/g, '_')}; YACM's server sends “${base}” for it.`);
-    if (!st?.running) notes.push(`Start the ${kindSel.toUpperCase()} server above first.`);
+    if (!st?.running) notes.push(`Start the ${srv === 'scp' ? 'SCP / SFTP' : srv.toUpperCase()} server above first.`);
     notes.push(...deviceNotes(platform, kindSel, port));
-    if (kindSel === 'scp' && st?.running) notes.push(`The device asks for the password: ${st.password}`);
-    if (route?.jump && !tun) notes.push(`${tab.node.name} is behind the jump host ${route.jump} and cannot reach this computer directly. Open a tunnel through the jump host (HTTP or SCP), or copy with Send file / Get file instead.`);
+    if (srv === 'scp' && st?.running) notes.push(`The device asks for the password: ${st.password}`);
+    if (route?.jump && !tun) notes.push(`${tab.node.name} is behind the jump host ${route.jump} and cannot reach this computer directly. Open a tunnel through the jump host (HTTP, SCP or SFTP), or copy with Send file / Get file instead.`);
     if (direct && !tun && st?.running && kindSel !== 'tftp') notes.push(`If ${tab.node.name} cannot connect to this computer (VPN, NAT, a firewall: “Connection refused” or a timeout), open a tunnel through this session: the command then copies from 127.0.0.1 on ${tab.node.name}. Works with Linux servers; Cisco IOS and most network devices do not offer such tunnels.`);
     if (tun) notes.push(tun.reachable ? `Through the tunnel on ${tun.via}: the device copies from ${tun.address}:${tun.port}.` : `The tunnel on ${tun.via} is open, but the device probably cannot reach it: ${tun.note || 'its SSH server does not allow tunnels (AllowTcpForwarding).'}`);
     helperNote.textContent = notes.join(' ');
@@ -350,7 +367,7 @@ export async function openServers({ tabId } = {}) {
   helper.append(
     h('div', { class: 'srv-helper-opts' },
       seg([{ value: 'get', label: 'To the device' }, { value: 'put', label: 'From the device' }], dirSel, v => { dirSel = v; deviceFs = ''; paintHelper(); }),
-      seg(KINDS.map(k => ({ value: k.kind, label: k.label })), kindSel, v => { kindSel = v; LS.set('helperKind', v); paintHelper(); }),
+      seg(HELPER_KINDS, kindSel, v => { kindSel = v; LS.set('helperKind', v); paintHelper(); }),
       h('select', { on: { change: e => { platform = e.target.value; LS.set('platform', platform); paintHelper(); } } }, ...PLATFORMS.map(p => h('option', { value: p.value, text: p.label, selected: p.value === platform })))),
     h('div', { class: 'srv-helper-opts' }, h('div', { class: 'field' }, h('span', { text: 'File' }), h('div', { class: 'with-btn' }, fileInp, pickFile)), field('Address of this computer', ipSel), field('Session', target)),
     out, helperNote, h('div', { class: 'row-btns' }, typeBtn, copyBtn, tunBtn));
