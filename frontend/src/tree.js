@@ -15,6 +15,13 @@ const MAX_ROWS = 1000; // rows drawn at once when filtering; the rest on request
 const haystacks = new WeakMap(); // node -> text the filter searches
 let dragIds = null;
 
+// Other programs' sessions found on this computer, offered on an empty
+// list ("SecureCRT: 214 sessions"); asked for once.
+/** @type {any[] | null} */
+let found = null;
+let foundAsked = false;
+export function foundLabel(s) { return s.sessions > 0 ? `${s.label}: ${s.sessions === 1 ? '1 session' : `${s.sessions} sessions`}` : `${s.label}: import`; }
+
 // The session list's own clipboard: Cut, Copy and Paste of sessions and
 // groups (Ctrl/Cmd+X, C, V in the list). Cut moves, Copy makes copies with
 // everything inside and the stored passwords. Team library nodes can only
@@ -375,6 +382,15 @@ export function render() {
   counts = null;
   if (!state.nodes.length) {
     tree.append(h('div', { class: 'tree-empty' }, 'No sessions yet. Use + to add one, or the import button next to it to bring them over from SecureCRT, Xshell, MobaXterm, mRemoteNG, PuTTY, Ásbrú, ~/.ssh/config, a CSV or Excel list, or NetBox.'));
+    if (!foundAsked) {
+      foundAsked = true;
+      api.ImportSourceCounts().then(list => { found = (list || []).filter(s => s.sessions !== 0); if (found.length && !state.nodes.length) render(); }).catch(() => {});
+    }
+    if (found?.length) {
+      tree.append(h('div', { class: 'tree-found' },
+        h('div', { class: 'hint', text: 'Found on this computer:' }),
+        ...found.map(s => h('button', { type: 'button', class: 'btn small', text: foundLabel(s), title: `Import from ${s.display || s.path}`, on: { click: () => hooks.importFound(s.path, s.kind) } }))));
+    }
   } else if (vis && vis.size === 0) {
     tree.append(h('div', { class: 'tree-empty', text: `No saved session matches “${filter}”. Enter connects to it as a new connection.` }));
   }

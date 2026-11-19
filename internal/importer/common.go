@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -447,6 +448,43 @@ func DisplayPath(p string) string {
 
 // FindSources looks for configurations of other programs in their default
 // locations on this computer.
+// CountSessions says roughly how many sessions s has, quickly: session
+// files in a folder are counted, files are read (passwords are not
+// decrypted when the deadline has passed). -1 means not known.
+func CountSessions(s Source, deadline time.Time) int {
+	count := func(dir string, match func(name string, b []byte) bool) int {
+		n := 0
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || time.Now().After(deadline) {
+				return nil
+			}
+			b, err := readFile(p)
+			if err == nil && match(strings.ToLower(d.Name()), b) {
+				n++
+			}
+			return nil
+		})
+		return n
+	}
+	switch s.Kind {
+	case KindSecureCRT:
+		if fi, err := os.Stat(s.Path); err == nil && fi.IsDir() {
+			return count(s.Path, func(name string, b []byte) bool {
+				return strings.HasSuffix(name, ".ini") && name != "__folderdata__.ini" && strings.Contains(decodeText(b), `S:"Hostname"`)
+			})
+		}
+	case KindXshell:
+		if fi, err := os.Stat(s.Path); err == nil && fi.IsDir() {
+			return count(s.Path, func(name string, _ []byte) bool { return strings.HasSuffix(name, ".xsh") })
+		}
+	}
+	res, err := Run(s.Kind, s.Path, "", Options{Cancelled: func() bool { return time.Now().After(deadline) }})
+	if err != nil {
+		return -1
+	}
+	return res.Report.Sessions
+}
+
 func FindSources() []Source {
 	home, _ := os.UserHomeDir()
 	appData := os.Getenv("APPDATA")

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yacm-app/yacm/internal/store"
 )
@@ -320,5 +321,23 @@ func TestSecureCRTRootFolder(t *testing.T) {
 	}
 	if r1 := by["R1"]; parentName(by, r1) != "Core" || len(r1.Session.Jump) != 1 {
 		t.Fatalf("R1 %+v", r1.Session)
+	}
+}
+
+func TestCountSessions(t *testing.T) {
+	far := time.Now().Add(time.Minute)
+	dir := "testdata/foreign/securecrt-many/Sessions"
+	res, err := Run(KindSecureCRT, dir, "", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := CountSessions(Source{Kind: KindSecureCRT, Path: dir}, far); n < res.Report.Sessions || n == 0 {
+		t.Fatalf("SecureCRT folder: %d, import finds %d", n, res.Report.Sessions)
+	}
+	if n := CountSessions(Source{Kind: KindPuTTYReg, Path: "testdata/foreign/putty-sessions.reg"}, far); n <= 0 {
+		t.Fatalf("PuTTY: %d", n)
+	}
+	if n := CountSessions(Source{Kind: KindMobaXterm, Path: "testdata/nope.ini"}, far); n != -1 {
+		t.Fatalf("missing file: %d", n)
 	}
 }

@@ -1443,3 +1443,26 @@ test('an import from another program lets you choose what comes in', async ({ pa
   await expect(page.getByRole('dialog', { name: /Imported 2 credential profiles/ })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('a fresh install offers a button for each program found, in the guide and on the empty list', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const sourceCounts = [
+    { kind: 'securecrt', label: 'SecureCRT', path: '/home/u/.vandyke/SecureCRT/Config/Sessions', display: '~/.vandyke/SecureCRT/Config/Sessions', sessions: 214 },
+    { kind: 'ssh-config', label: 'OpenSSH config', path: '/home/u/.ssh/config', display: '~/.ssh/config', sessions: 0 },
+    { kind: 'mremoteng', label: 'mRemoteNG', path: '/x/confCons.xml', display: 'confCons.xml', sessions: -1 },
+  ];
+  await page.addInitScript(c => { window.__mockConfig = c; }, { fresh: true, nodes: [], settings: { lastSeenVersion: '' }, sourceCounts });
+  await page.addInitScript(mock);
+  await page.goto('/');
+  const welcome = page.getByRole('dialog', { name: 'Welcome to YACM' });
+  await expect(welcome.getByRole('button', { name: 'SecureCRT: 214 sessions' })).toBeVisible();
+  await expect(welcome.getByRole('button', { name: 'mRemoteNG: import' })).toBeVisible();
+  await expect(welcome.getByRole('button', { name: /OpenSSH/ })).toHaveCount(0);
+  await welcome.getByRole('button', { name: 'Start with an empty list' }).click();
+  // The empty list offers them too.
+  await page.locator('#tree').getByRole('button', { name: 'SecureCRT: 214 sessions' }).click();
+  await expect(page.getByRole('dialog', { name: 'Import from SecureCRT' })).toBeVisible();
+  expect((await calls(page, 'PreviewForeign')).at(-1).args.slice(0, 2)).toEqual(['securecrt', '/home/u/.vandyke/SecureCRT/Config/Sessions']);
+  expect(errors).toEqual([]);
+});

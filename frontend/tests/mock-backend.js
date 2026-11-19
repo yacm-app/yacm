@@ -49,6 +49,8 @@
     TakeTeamChanges: () => cfg.teamChanges || [],
     TeamLibraries: () => [],
     ImportSources: () => [],
+    ImportSourceCounts: () => cfg.sourceCounts || [],
+    PreviewForeign: (kind, path) => ({ kind, name: path, path, foreign: cfg.foreign || { label: 'SecureCRT', sessions: 3, groups: 1, secrets: 2, automated: 1, profiles: 2, jumps: 1 } }),
     InspectImport: path => ({ kind: 'securecrt', name: path, path, foreign: cfg.foreign || { label: 'SecureCRT', sessions: 3, groups: 1, secrets: 2, automated: 1, profiles: 2, jumps: 1 } }),
     ImportForeign: req => ({ source: 'SecureCRT', sessions: req.parts?.sessions === false ? 0 : 3, profiles: req.parts?.profiles === false ? 0 : 2, secrets: 0, automated: 0, skipped: [], warnings: [] }),
     ListBackups: () => backups,

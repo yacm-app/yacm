@@ -11,6 +11,8 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -103,6 +105,44 @@ func (a *App) ListSerialPorts() ([]serialconn.PortInfo, error) { return serialco
 
 // ImportSources lists configurations of other programs found on this computer.
 func (a *App) ImportSources() []importer.Source { return importer.FindSources() }
+
+// SourceCount is a configuration found on this computer and roughly how
+// many sessions it has (-1: not known in time).
+type SourceCount struct {
+	importer.Source
+	Sessions int `json:"sessions"`
+}
+
+// ImportSourceCounts lists the configurations found on this computer with
+// their number of sessions, for buttons on an empty session list. It takes
+// a few seconds at most.
+func (a *App) ImportSourceCounts() []SourceCount {
+	src := importer.FindSources()
+	out := make([]SourceCount, len(src))
+	deadline := time.Now().Add(4 * time.Second)
+	var mu sync.Mutex
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for i, s := range src {
+		out[i] = SourceCount{Source: s, Sessions: -1}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n := importer.CountSessions(s, deadline)
+			mu.Lock()
+			out[i].Sessions = n
+			mu.Unlock()
+		}()
+	}
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Until(deadline) + time.Second):
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return append([]SourceCount(nil), out...)
+}
 
 func (a *App) KnownHostEntries() ([]sshconn.Entry, error) { return a.kh.List() }
 

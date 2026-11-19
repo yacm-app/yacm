@@ -62,6 +62,7 @@ export interface Backend {
   ImportAsbru(a1: string): Promise<any | null>;
   ImportForeign(a1: any): Promise<any | null>;
   ImportSessions(a1: string, a2: any): Promise<any | null>;
+  ImportSourceCounts(): Promise<any[]>;
   ImportSources(): Promise<any[]>;
   ImportTable(a1: any): Promise<any | null>;
   InspectDataFolder(a1: string): Promise<any>;

@@ -688,3 +688,6 @@ table.rules.tunnels input[type=number] { width: 100%; }
 .import-parts { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
 .import-parts .label { color: var(--muted); font-size: 13px; }
 .import-parts .check .hint { margin-left: 8px; color: var(--faint); font-size: 12.5px; }
+.tree-found, .guide-found { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 16px 12px; }
+.guide-found { padding: 0 0 10px; }
+.tree-found .hint, .guide-found .hint { width: 100%; color: var(--muted); font-size: 13px; }

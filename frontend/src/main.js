@@ -14,7 +14,7 @@ import { initServers } from './servers.js';
 import { initActivity } from './activity.js';
 import { editSession, editGroup } from './editor.js';
 import { openSettings, lockScreen } from './settings.js';
-import { importMenu, exportDialog } from './transfer.js';
+import { importMenu, exportDialog, importSource } from './transfer.js';
 import { openProfiles } from './profiles.js';
 import { editMany } from './bulk.js';
 import { editLibrary } from './snippets.js';
@@ -155,6 +155,7 @@ async function boot() {
     exportMany: ids => exportDialog(ids),
     exportAll: () => exportDialog(null),
     importHere: () => importMenu(document.getElementById('btn-more'), afterImport, { withExport: true }),
+    importFound: (path, kind) => importSource(path, kind, afterImport),
     copyToMine: ids => copyToMine(ids),
     publishGroup: id => publishDialog(id),
     editLibrary: id => editTeamLibrary(id),

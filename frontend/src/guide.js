@@ -5,6 +5,7 @@
 import { api, state, runtime } from './api.js';
 import { h, openDialog, toast, errMsg } from './ui.js';
 import { importMenu, importSource, importFlow } from './transfer.js';
+import { foundLabel } from './tree.js';
 import { PROJECT_URL } from './legal.js';
 import { openTeamSettings } from './teamui.js';
 import { whatsNewFor } from './whatsnew.js';
@@ -31,10 +32,14 @@ export function startGuide(info, after) {
   const card = (title, text, ...buttons) => h('div', { class: 'guide-card' },
     h('div', { class: 'title', text: title }), h('p', { text }), h('div', { class: 'row' }, ...buttons));
   const btn = (label, fn, primary) => h('button', { type: 'button', class: `btn small${primary ? ' primary' : ''}`, text: label, on: { click: fn } });
-  const found = h('p', { class: 'hint', style: { margin: '-4px 0 8px' } });
-  api.ImportSources().then(src => {
-    const names = [...new Set((src || []).map(s => s.label))];
-    if (names.length) found.textContent = `Found on this computer: ${names.join(', ')}.`;
+  // A button for each program whose sessions are on this computer.
+  const found = h('div', { class: 'guide-found', hidden: true });
+  api.ImportSourceCounts().then(src => {
+    const list = (src || []).filter(s => s.sessions !== 0);
+    if (!list.length) return;
+    found.replaceChildren(h('span', { class: 'hint', text: 'Found on this computer:' }),
+      ...list.map(s => btn(foundLabel(s), () => { dlg?.close(); importSource(s.path, s.kind, after).catch(e => toast(errMsg(e), 'error')); })));
+    found.hidden = false;
   }).catch(() => {});
   const vaultNote = state.vault.exists ? null
     : h('p', { class: 'warning', text: 'You have not set up the vault yet, so passwords cannot be saved. Click the padlock at the bottom of the bar on the left when you are ready.' });
