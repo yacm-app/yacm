@@ -22,6 +22,7 @@ export interface Backend {
   CloseTab(a1: string): Promise<void>;
   Connect(a1: any): Promise<string>;
   ConnectCluster(a1: string, a2: number, a3: number): Promise<string[]>;
+  CopyNodes(a1: string[], a2: string, a3: number): Promise<string[]>;
   CopyToMySessions(a1: string[]): Promise<string>;
   CreateVault(a1: string): Promise<void>;
   DataFolderStatus(): Promise<any>;

@@ -60,6 +60,22 @@
       return [...out];
     },
     SaveSettings: s => { Object.assign(settings, s); return null; },
+    MoveNode: (id, parentId, index) => { const n = nodes.find(x => x.id === id); if (n) { n.parentId = parentId; n.order = index < 0 ? 9999 : index; } return null; },
+    CopyNodes: (ids, parentId) => {
+      let k = 0;
+      const tops = [];
+      const copy = (id, parent, top) => {
+        const n = nodes.find(x => x.id === id);
+        if (!n) return;
+        const c = { ...structuredClone(n), id: `c${nodes.length + ++k}`, parentId: parent, order: 9999 };
+        if (top && nodes.some(x => x.parentId === parent && x.name === c.name)) c.name += ' (copy)';
+        nodes.push(c);
+        if (top) tops.push(c.id);
+        nodes.filter(x => x.parentId === id && x.id !== c.id).forEach(x => copy(x.id, c.id, false));
+      };
+      ids.forEach(id => copy(id, parentId, true));
+      return tops;
+    },
     SetExpanded: (id, open) => { const n = nodes.find(x => x.id === id); if (n) n.expanded = open; return null; },
     DeleteNode: id => { nodes = nodes.filter(n => n.id !== id && n.parentId !== id); return null; },
     BulkUpdate: req => req.ids.length,

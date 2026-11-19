@@ -334,6 +334,38 @@ func (a *App) DuplicateNode(id string) (*store.Node, error) {
 	return c, err
 }
 
+// CopyNodes pastes copies of sessions and groups (with all they contain)
+// into parentID at index (-1: at the end), with their stored passwords. It
+// returns the IDs of the new top-level nodes.
+func (a *App) CopyNodes(ids []string, parentID string, index int) ([]string, error) {
+	tops, idMap, ruleMaps, err := a.store.CopyNodes(ids, parentID, index)
+	if err != nil {
+		return nil, err
+	}
+	if a.vault.Unlocked() {
+		for old, nid := range idMap {
+			rm := ruleMaps[nid]
+			err = a.vault.CopyPrefix(store.SecretPrefix(old), store.SecretPrefix(nid), func(rest string) string {
+				if r, ok := strings.CutPrefix(rest, "expect/"); ok {
+					if n, ok := rm[r]; ok {
+						return "expect/" + n
+					}
+				}
+				return rest
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	out := make([]string, len(tops))
+	for i, n := range tops {
+		out[i] = n.ID
+	}
+	applog.Infof("pasted %d item(s), %d node(s) in all", len(tops), len(idMap))
+	return out, nil
+}
+
 // SetExpanded remembers group state.
 func (a *App) SetExpanded(id string, open bool) error { return a.store.SetExpanded(id, open) }
 

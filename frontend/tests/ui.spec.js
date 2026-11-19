@@ -1346,3 +1346,39 @@ test('a middle click pastes the last selection or the clipboard, as set, and not
   }
   expect(errors).toEqual([]);
 });
+
+test('cut, copy and paste in the session list: sessions and groups, menus and keys', async ({ page }) => {
+  const errors = await open(page);
+  const row = name => page.locator('#tree .row', { hasText: name }).first();
+  const menu = page.locator('.menu');
+  // Copy a session and paste it after old-router (top level).
+  await row('core-sw1').click({ button: 'right' });
+  await menu.getByText('Copy', { exact: true }).click();
+  await row('old-router').click({ button: 'right' });
+  await menu.getByText('Paste', { exact: true }).click();
+  let c = (await calls(page, 'CopyNodes')).at(-1).args;
+  expect(c).toEqual([['s1'], '', 2]);
+  await expect(page.locator('#tree .row.session', { hasText: 'core-sw1' })).toHaveCount(2);
+  // A group cannot go into itself.
+  await row('DC Zagreb').click({ button: 'right' });
+  await menu.getByText('Copy', { exact: true }).click();
+  await row('core-sw2').click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: /^Paste/ }).or(menu.locator('button', { hasText: /^Paste/ })).first()).toBeDisabled();
+  await page.keyboard.press('Escape');
+  // Cut with the keyboard: dimmed until pasted, Ctrl+V on a group moves it in.
+  await row('old-router').click();
+  await page.keyboard.press('Control+x');
+  await expect(row('old-router')).toHaveClass(/cut/);
+  await row('DC Zagreb').click();
+  await page.keyboard.press('Control+v');
+  await expect.poll(async () => (await calls(page, 'MoveNode')).at(-1)?.args.slice(0, 2)).toEqual(['s3', 'g1']);
+  await expect(page.locator('#tree .row.cut')).toHaveCount(0);
+  // Copy with the keyboard and paste at the top level from the empty area.
+  await row('core-sw2').click();
+  await page.keyboard.press('Control+c');
+  await page.locator('#tree').click({ button: 'right', position: { x: 50, y: 400 } });
+  await menu.getByText('Paste', { exact: true }).click();
+  c = (await calls(page, 'CopyNodes')).at(-1).args;
+  expect(c).toEqual([['s2'], '', -1]);
+  expect(errors).toEqual([]);
+});

@@ -875,6 +875,143 @@ func (s *Store) Duplicate(id string) (*Node, map[string]string, error) {
 	return clone(c), ruleMap, s.saveLocked()
 }
 
+// CopyNodes copies sessions and groups (with everything in them) into
+// parentID at index (-1: at the end). Jump hosts inside the copy point at
+// the copies; credential profiles stay shared. It returns the new top-level
+// nodes, a map of old->new node IDs and, per new session, a map of
+// old->new automation rule IDs (for copying secrets).
+func (s *Store) CopyNodes(ids []string, parentID string, index int) ([]*Node, map[string]string, map[string]map[string]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.readOnly {
+		return nil, nil, nil, ErrReadOnly
+	}
+	if err := s.libraryRefusalLocked("", parentID); err != nil {
+		return nil, nil, nil, err
+	}
+	if parentID != "" {
+		if p, ok := s.nodes[parentID]; !ok || !p.IsGroup {
+			return nil, nil, nil, errors.New("target is not a group")
+		}
+	}
+	var tops []*Node
+	for _, id := range ids {
+		if err := s.libraryRefusalLocked(id, ""); err != nil {
+			return nil, nil, nil, err
+		}
+		n, ok := s.nodes[id]
+		if !ok {
+			return nil, nil, nil, ErrNotFound
+		}
+		if n.IsGroup && s.isAncestor(id, parentID) {
+			return nil, nil, nil, errors.New("a group cannot be pasted into itself")
+		}
+		inner := false
+		for _, o := range ids {
+			if o != id && s.isAncestor(o, n.ParentID) {
+				inner = true // goes along with a selected group
+				break
+			}
+		}
+		if !inner {
+			tops = append(tops, n)
+		}
+	}
+	sort.SliceStable(tops, func(i, j int) bool {
+		if tops[i].ParentID != tops[j].ParentID {
+			return tops[i].ParentID < tops[j].ParentID
+		}
+		return tops[i].Order < tops[j].Order
+	})
+	// Everything inside the copied groups.
+	kids := map[string][]*Node{}
+	for _, n := range s.nodes {
+		kids[n.ParentID] = append(kids[n.ParentID], n)
+	}
+	idMap := map[string]string{}
+	var all []*Node
+	var walk func(n *Node)
+	walk = func(n *Node) {
+		if _, seen := idMap[n.ID]; seen {
+			return
+		}
+		idMap[n.ID] = NewID()
+		all = append(all, n)
+		for _, k := range kids[n.ID] {
+			walk(k)
+		}
+	}
+	for _, n := range tops {
+		walk(n)
+	}
+	// Names already used where the copies go.
+	var siblings []*Node
+	used := map[string]bool{}
+	for _, c := range kids[parentID] {
+		siblings = append(siblings, c)
+		used[c.Name] = true
+	}
+	sort.Slice(siblings, func(i, j int) bool { return siblings[i].Order < siblings[j].Order })
+	now := time.Now().UTC()
+	ruleMaps := map[string]map[string]string{}
+	topSet := map[string]bool{}
+	for _, n := range tops {
+		topSet[n.ID] = true
+	}
+	var newTops []*Node
+	for _, n := range all {
+		c := clone(n)
+		c.ID = idMap[n.ID]
+		c.Updated = now
+		if topSet[n.ID] {
+			c.ParentID = parentID
+			name := c.Name
+			for i := 1; used[name]; i++ {
+				if i == 1 {
+					name = c.Name + " (copy)"
+				} else {
+					name = fmt.Sprintf("%s (copy %d)", c.Name, i)
+				}
+			}
+			used[name] = true
+			c.Name = name
+			newTops = append(newTops, c)
+		} else {
+			c.ParentID = idMap[n.ParentID]
+		}
+		if d := c.Defaults; d != nil {
+			if j, ok := idMap[d.JumpVia]; ok {
+				d.JumpVia = j
+			}
+		}
+		if ss := c.Session; ss != nil {
+			if j, ok := idMap[ss.JumpVia]; ok {
+				ss.JumpVia = j
+			}
+			rm := map[string]string{}
+			for i := range ss.Expect {
+				nid := NewID()
+				rm[ss.Expect[i].ID] = nid
+				ss.Expect[i].ID = nid
+			}
+			ruleMaps[c.ID] = rm
+		}
+		s.nodes[c.ID] = c
+	}
+	if index < 0 || index > len(siblings) {
+		index = len(siblings)
+	}
+	order := append(append(append([]*Node{}, siblings[:index]...), newTops...), siblings[index:]...)
+	for i, c := range order {
+		c.Order = i
+	}
+	out := make([]*Node, len(newTops))
+	for i, c := range newTops {
+		out[i] = clone(c)
+	}
+	return out, idMap, ruleMaps, s.saveLocked()
+}
+
 // SessionsInCluster returns session IDs that belong to the named cluster.
 func (s *Store) SessionsInCluster(name string) []string {
 	s.mu.RLock()

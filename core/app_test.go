@@ -79,6 +79,33 @@ func TestSaveNodeSecrets(t *testing.T) {
 	}
 }
 
+func TestCopyNodesSecrets(t *testing.T) {
+	a := newTestApp(t)
+	g, _ := a.SaveNode(store.Node{Name: "Site", IsGroup: true}, nil)
+	n := store.Node{Name: "r1", ParentID: g.ID, Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1",
+		Expect: []store.ExpectRule{{ID: "r-a", Active: true, Expect: "Password:", Hidden: true}}}}
+	saved, err := a.SaveNode(n, &SecretInput{Password: sp("pw"), Expect: map[string]*string{"r-a": sp("enable-pw")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tops, err := a.CopyNodes([]string{g.ID}, "", -1)
+	if err != nil || len(tops) != 1 {
+		t.Fatal(err)
+	}
+	var cp *store.Node
+	for _, x := range a.store.List() {
+		if x.ParentID == tops[0] {
+			cp = x
+		}
+	}
+	if cp == nil || cp.ID == saved.ID {
+		t.Fatal("session not copied")
+	}
+	if a.secret(store.SecretPassword(cp.ID)) != "pw" || a.secret(store.SecretExpect(cp.ID, cp.Session.Expect[0].ID)) != "enable-pw" {
+		t.Fatal("secrets not copied")
+	}
+}
+
 func TestParseQuick(t *testing.T) {
 	cases := map[string]string{
 		"admin@10.0.0.1":                "ssh admin 10.0.0.1 22",

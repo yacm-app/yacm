@@ -2,7 +2,7 @@
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
 import { api, state, reload, colorOf, effectiveLogin, effectiveJump, teamLibOf, isNewerType, runtime } from './api.js';
-import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural } from './ui.js';
+import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC } from './ui.js';
 import { looksLikeAddress } from './switcher.js';
 import { showSidebar } from './activity.js';
 
@@ -14,6 +14,98 @@ let showAll = false; // show every match even in a very large result
 const MAX_ROWS = 1000; // rows drawn at once when filtering; the rest on request
 const haystacks = new WeakMap(); // node -> text the filter searches
 let dragIds = null;
+
+// The session list's own clipboard: Cut, Copy and Paste of sessions and
+// groups (Ctrl/Cmd+X, C, V in the list). Cut moves, Copy makes copies with
+// everything inside and the stored passwords. Team library nodes can only
+// be copied (into your own sessions).
+/** @type {{ ids: string[], cut: boolean } | null} */
+let clip = null;
+const MOD = IS_MAC ? '⌘' : 'Ctrl+';
+
+// clipTop keeps the top-most of ids: what is inside a chosen group goes
+// along with it.
+function clipTop(ids) { return ids.filter(id => !ids.some(o => o !== id && isAncestor(o, id))); }
+
+function cutNodes(ids) {
+  if (ids.some(id => state.byId.get(id)?.library)) { toast('Team library sessions cannot be moved. Copy them instead.'); return; }
+  clip = { ids: clipTop(ids), cut: true };
+  paintCut();
+}
+
+function copyNodes(ids) {
+  clip = { ids: clipTop(ids), cut: false };
+  paintCut();
+  toast(clip.ids.length === 1 ? `Copied ${state.byId.get(clip.ids[0])?.name || ''}. Paste where it should go (${MOD}V).` : `Copied ${clip.ids.length} items. Paste where they should go (${MOD}V).`);
+}
+
+// pasteTarget: into a group, after a session, or at the top level.
+/** @param {any} n */
+function pasteTarget(n) {
+  if (!n) return { parentId: '', index: -1 };
+  if (n.isGroup) return { parentId: n.id, index: -1 };
+  const siblings = state.children.get(n.parentId || '') || [];
+  return { parentId: n.parentId || '', index: siblings.findIndex(s => s.id === n.id) + 1 };
+}
+
+// pasteWhy says why nothing can be pasted at n ('' when it can).
+/** @param {any} n */
+function pasteWhy(n) {
+  if (!clip) return 'Cut or copy sessions or groups first';
+  const { parentId } = pasteTarget(n);
+  if (parentId && state.byId.get(parentId)?.library) return 'Team libraries are read-only';
+  if (clip.ids.some(id => id === parentId || isAncestor(id, parentId))) return 'A group cannot be pasted into itself';
+  return '';
+}
+
+async function pasteAt(n) {
+  const why = pasteWhy(n);
+  if (why) { if (clip) toast(why); return; }
+  const { parentId, index } = pasteTarget(n);
+  const { ids, cut } = clip;
+  try {
+    let tops;
+    if (cut) {
+      await moveMany(ids, parentId, index);
+      clip = null;
+      tops = ids;
+    } else if (ids.every(id => state.byId.get(id)?.library)) {
+      // A copy of team library sessions: your own, with your logins.
+      const top = await api.CopyToMySessions(ids);
+      await api.MoveNode(top, parentId, index);
+      tops = [top];
+    } else if (ids.some(id => state.byId.get(id)?.library)) {
+      toast('Copy team library sessions and your own sessions separately.', 'error');
+      return;
+    } else {
+      tops = await api.CopyNodes(ids, parentId, index);
+    }
+    if (parentId && !state.byId.get(parentId)?.expanded) await api.SetExpanded(parentId, true);
+    await reload();
+    state.selection = new Set(tops);
+    state.selected = tops[tops.length - 1] || null;
+    render();
+    paintCut();
+  } catch (e) { toast(errMsg(e), 'error'); await reload(); render(); }
+}
+
+function clearClip() { if (clip?.cut) { clip = null; paintCut(); } }
+
+function paintCut() {
+  const cut = new Set(clip?.cut ? clip.ids : []);
+  document.querySelectorAll('#tree .row').forEach(r => r.classList.toggle('cut', cut.has(/** @type {HTMLElement} */ (r).dataset.id)));
+}
+
+// clipItems are Cut, Copy and Paste in a menu for the nodes ids (n: the
+// node right-clicked, where Paste puts things).
+function clipItems(ids, n, { library = false } = {}) {
+  const why = pasteWhy(n);
+  return [
+    library ? null : { label: 'Cut', key: `${MOD}X`, action: () => cutNodes(ids) },
+    { label: 'Copy', key: `${MOD}C`, action: () => copyNodes(ids), title: library ? 'Paste it into your own sessions: an editable copy with your logins' : 'Copies with everything inside and the stored passwords' },
+    library ? null : { label: n?.isGroup ? 'Paste into this group' : 'Paste', key: `${MOD}V`, action: () => pasteAt(n), disabled: !!why, title: why || undefined },
+  ].filter(Boolean);
+}
 let anchorId = null; // start of a Shift+click range
 
 // Favourites: personal, kept per computer (api.Favorites); shown in their
@@ -63,6 +155,8 @@ export function initTree(h_) {
       '-',
       { label: 'Import sessions…', action: () => hooks.importHere() },
       { label: 'Export all sessions…', action: () => hooks.exportAll(), disabled: !state.nodes.length },
+      '-',
+      { label: 'Paste', key: `${MOD}V`, action: () => pasteAt(null), disabled: !!pasteWhy(null), title: pasteWhy(null) || 'At the top level' },
     ]);
   });
   tree.addEventListener('keydown', onKey);
@@ -284,6 +378,7 @@ export function render() {
   } else if (vis && vis.size === 0) {
     tree.append(h('div', { class: 'tree-empty', text: `No saved session matches “${filter}”. Enter connects to it as a new connection.` }));
   }
+  if (clip?.cut) paintCut();
   renderClusters();
 }
 
@@ -398,6 +493,7 @@ function multiMenu(ids) {
       '-',
       { label: 'Copy to my sessions', action: () => hooks.copyToMine(libs), disabled: libs.length !== ids.length },
       { label: 'Copy addresses', action: () => copyAddresses(ids), disabled: !sessions.length },
+      ...(libs.length === ids.length ? clipItems(ids, null, { library: true }) : []),
     ];
   }
   return [
@@ -406,6 +502,8 @@ function multiMenu(ids) {
     { label: `Edit ${what} together…`, action: () => hooks.editMany(ids) },
     { label: 'Copy addresses', action: () => copyAddresses(ids), disabled: !sessions.length, title: 'user@host of each session, one per line' },
     { label: 'Export…', action: () => hooks.exportMany(ids) },
+    '-',
+    ...clipItems(ids, null).filter(x => x.label !== 'Paste'),
     '-',
     { label: `Delete ${what}`, danger: true, action: () => removeMany(ids) },
   ];
@@ -434,6 +532,9 @@ function bindRow(row, n) {
       { label: 'Edit all sessions in it…', action: () => hooks.editMany([n.id]), disabled: !countSessions(n.id) },
       '-',
       { label: 'Export group…', action: () => hooks.exportNode(n.id) },
+      '-',
+      ...clipItems([n.id], n),
+      '-',
       editing ? { label: `Publish changes to the team library`, action: () => hooks.publishGroup(n.id) } : { label: 'Publish as team library…', action: () => hooks.publishGroup(n.id), disabled: !countSessions(n.id) },
       editing ? { label: 'Stop editing the team library…', action: () => hooks.stopEditing(editing.id) } : null,
       '-',
@@ -448,6 +549,8 @@ function bindRow(row, n) {
       { label: 'Edit', key: 'F4', action: () => hooks.edit(n) },
       { label: 'Duplicate', action: () => duplicate(n) },
       { label: 'Export…', action: () => hooks.exportNode(n.id) },
+      '-',
+      ...clipItems([n.id], n),
       '-',
       { label: 'Delete', key: 'Del', danger: true, action: () => remove(n) },
     ];
@@ -491,6 +594,7 @@ function libraryMenu(n) {
     n.isGroup ? null : { label: 'Copy address', action: () => copyAddresses([n.id]) },
     '-',
     { label: 'Copy to my sessions', action: () => hooks.copyToMine([n.id]), title: 'An editable copy in your own sessions' },
+    ...(root ? [] : clipItems([n.id], n, { library: true })),
     root ? { label: 'Edit this library…', action: () => hooks.editLibrary(n.library), disabled: !lib || lib.stale || !!lib.needsNewer, title: lib?.needsNewer ? `Update YACM to edit it: ${lib.needsNewer}` : undefined } : null,
     { label: 'Team library settings…', action: () => hooks.teamSettings() },
   ];
@@ -572,6 +676,16 @@ function onKey(e) {
   if (!rows.length) return;
   let i = rows.findIndex(r => r.dataset.id === state.selected);
   const n = state.byId.get(state.selected);
+  const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+  if (mod && ['x', 'c', 'v'].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+    const ids = selectedIds();
+    const k = e.key.toLowerCase();
+    if (k === 'x' && ids.length) cutNodes(ids);
+    if (k === 'c' && ids.length) copyNodes(ids);
+    if (k === 'v') pasteAt(n);
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
     e.preventDefault();
     // With a filter, every match counts, also those not drawn in a long list.
@@ -597,7 +711,7 @@ function onKey(e) {
       if (n?.library) { toast('Team library sessions are read-only. Remove the library in Settings > Team libraries.'); return; }
       if (state.selection.size > 1) removeMany([...state.selection]); else if (n) remove(n);
       return;
-    case 'Escape': if (n) select(n.id); return;
+    case 'Escape': clearClip(); if (n) select(n.id); return;
     default: return;
   }
   e.preventDefault();
