@@ -160,6 +160,28 @@ function foreignDialog(info, after) {
   const pwStatus = h('span', { class: 'hint' });
   const check = h('button', { type: 'button', class: 'btn small', text: 'Check' });
   const pwField = h('label', { class: 'field' }, h('span', { text: f.passwordLabel || 'Passphrase' }), h('div', { class: 'with-btn' }, pw, check), pwStatus);
+  // What to import: everything by default; only the parts the file has.
+  const part = (label, hint) => { const cb = h('input', { type: 'checkbox', checked: true }); return { cb, el: h('label', { class: 'check' }, cb, h('span', { text: label }), hint ? h('span', { class: 'hint', text: hint }) : null) }; };
+  const P = {
+    sessions: part('Sessions'),
+    profiles: part('Credential profiles', 'Off: a session uses your profile of the same name, or takes the login itself'),
+    passwords: part('Saved passwords', 'Off: nothing goes into the vault'),
+    automation: part('Logon actions, as automation rules'),
+    jumpHosts: part('Jump hosts and firewalls', 'Off: the sessions connect directly'),
+  };
+  const groupField = field('Put the sessions into a new group named', groupName);
+  const partsBox = h('div', { class: 'import-parts' });
+  const paintParts = () => {
+    const count = { sessions: f.sessions, profiles: f.profiles, passwords: f.secrets, automation: f.automated, jumpHosts: f.jumps };
+    const label = { sessions: 'Sessions', profiles: 'Credential profiles', passwords: 'Saved passwords', automation: 'Logon actions, as automation rules', jumpHosts: 'Sessions through jump hosts' };
+    partsBox.replaceChildren(h('span', { class: 'label', text: 'What to import' }), ...Object.entries(P).filter(([k]) => count[k] > 0).map(([k, p]) => {
+      p.el.querySelector('span').textContent = `${label[k]} (${count[k]})`;
+      return p.el;
+    }));
+    partsBox.hidden = Object.keys(P).filter(k => count[k] > 0).length < 2;
+    groupField.hidden = !P.sessions.cb.checked;
+  };
+  P.sessions.cb.addEventListener('change', paintParts);
   const render = () => {
     const parts = [`Found ${plural(f.sessions, 'session', 'sessions')}${f.groups ? ` in ${plural(f.groups, 'group', 'groups')}` : ''}`];
     if (f.secrets && !f.passwordLabel) parts.push(`${plural(f.secrets, 'saved password', 'saved passwords')} can be moved into the vault`);
@@ -172,6 +194,7 @@ function foreignDialog(info, after) {
       ? `${plural(f.secretsFailed, 'saved password is', 'saved passwords are')} protected. Enter the ${f.passwordLabel || 'passphrase'} and press Check, or import without them.`
       : f.secrets ? `${plural(f.secrets, 'saved password', 'saved passwords')} can be decrypted.` : '';
     pwStatus.style.color = f.secretsFailed ? 'var(--warn)' : 'var(--ok)';
+    paintParts();
   };
   check.addEventListener('click', async () => {
     check.disabled = true;
@@ -187,19 +210,22 @@ function foreignDialog(info, after) {
       summary,
       pwField,
       f.secrets && !state.vault.unlocked ? h('p', { class: 'warning', text: 'The vault is locked, so saved passwords will be skipped. Unlock it first to import them.' }) : null,
-      field('Put the sessions into a new group named', groupName),
+      partsBox,
+      groupField,
       h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: 'Nothing in the other program is changed. Settings YACM does not take over (RDP, file transfer, port forwards, some proxies) are listed after the import.' })),
     buttons: [
       { label: 'Cancel' },
       { label: 'Import', kind: 'primary', default: true, onClick: async () => {
-        const rep = await withProgress(`Importing from ${f.label}`, () => api.ImportForeign({ kind: info.kind, path: info.path, password: pw.value, groupName: groupName.value }));
+        const parts = Object.fromEntries(Object.entries(P).map(([k, p]) => [k, p.cb.checked]));
+        if (!parts.sessions && !(parts.profiles && f.profiles)) throw new Error('Choose sessions, credential profiles or both.');
+        const rep = await withProgress(`Importing from ${f.label}`, () => api.ImportForeign({ kind: info.kind, path: info.path, password: pw.value, groupName: groupName.value, parts }));
         await reload();
         after && after();
         const extra = [rep.secrets ? `${plural(rep.secrets, 'saved password', 'saved passwords')} moved into the vault.` : f.passwordLabel ? 'No passwords were imported.' : '',
           rep.automated ? `Login automation imported for ${plural(rep.automated, 'session', 'sessions')}.` : '',
           rep.profiles ? `${plural(rep.profiles, 'credential profile', 'credential profiles')} added.` : '',
           rep.profilesKept ? `${plural(rep.profilesKept, 'credential profile', 'credential profiles')} you already had ${rep.profilesKept === 1 ? 'is' : 'are'} used.` : ''].filter(Boolean).join(' ');
-        reportDialog(rep.sessions ? `Imported ${plural(rep.sessions, 'session', 'sessions')} from ${f.label}` : 'Nothing imported', extra, rep,
+        reportDialog(rep.sessions ? `Imported ${plural(rep.sessions, 'session', 'sessions')} from ${f.label}` : rep.profiles ? `Imported ${plural(rep.profiles, 'credential profile', 'credential profiles')} from ${f.label}` : 'Nothing imported', extra, rep,
           info.kind === 'ssh-config' ? '' : 'SSH sessions imported from other programs use the Compatible algorithm set, because these configurations often point at older devices. Switch them to Secure where the device allows it.');
       } },
     ],

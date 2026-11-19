@@ -26,6 +26,8 @@ type ForeignRequest struct {
 	Path      string `json:"path"`
 	Password  string `json:"password"`  // SecureCRT passphrase, mRemoteNG / Xshell master password
 	GroupName string `json:"groupName"` // name of the group that receives everything
+	// Parts chooses what is imported (nil: everything).
+	Parts *ImportParts `json:"parts,omitempty"`
 }
 
 func (a *App) foreignOptions(password string) importer.Options {
@@ -137,7 +139,12 @@ func (a *App) ImportForeign(req ForeignRequest) (retRep *importer.Report, err er
 	a.previewMu.Lock()
 	a.preview = nil
 	a.previewMu.Unlock()
-	if len(res.Nodes) == 0 {
+	if req.Parts != nil {
+		if err := applyParts(res, *req.Parts, a.store.Credentials()); err != nil {
+			return nil, err
+		}
+	}
+	if len(res.Nodes) == 0 && len(res.Credentials) == 0 {
 		return &res.Report, nil
 	}
 	for _, n := range res.Nodes {
@@ -155,7 +162,11 @@ func (a *App) ImportForeign(req ForeignRequest) (retRep *importer.Report, err er
 			return nil, err
 		}
 	}
-	if err := a.store.ApplyImport(append([]*store.Node{group}, res.Nodes...), nil, creds); err != nil {
+	nodes := res.Nodes
+	if len(nodes) > 0 {
+		nodes = append([]*store.Node{group}, nodes...)
+	}
+	if err := a.store.ApplyImport(nodes, nil, creds); err != nil {
 		return nil, err
 	}
 	return &res.Report, nil
@@ -328,6 +339,7 @@ type ForeignInfo struct {
 	SecretsFailed int    `json:"secretsFailed"`
 	Automated     int    `json:"automated"`
 	Profiles      int    `json:"profiles"`                // credential profiles (SecureCRT credential sets)
+	Jumps         int    `json:"jumps"`                   // sessions that go through a jump host
 	PasswordLabel string `json:"passwordLabel,omitempty"` // set when a passphrase can unlock more
 }
 
@@ -355,7 +367,7 @@ func (a *App) PreviewForeign(kind, path, password string) (*ImportInfo, error) {
 		return nil, err
 	}
 	r := res.Report
-	fi := &ForeignInfo{Label: importer.Labels[k], Groups: r.Groups, Sessions: r.Sessions, Skipped: len(r.Skipped), Secrets: r.Secrets, SecretsFailed: r.SecretsFailed, Automated: r.Automated, Profiles: r.Profiles}
+	fi := &ForeignInfo{Label: importer.Labels[k], Groups: r.Groups, Sessions: r.Sessions, Skipped: len(r.Skipped), Secrets: r.Secrets, SecretsFailed: r.SecretsFailed, Automated: r.Automated, Profiles: r.Profiles, Jumps: countJumps(res.Nodes)}
 	if l, ok := passwordLabels[k]; ok && (r.SecretsFailed > 0 || password != "") {
 		fi.PasswordLabel = l
 	}

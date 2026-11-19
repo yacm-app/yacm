@@ -684,3 +684,7 @@ table.rules.tunnels input[type=number] { width: 100%; }
 .alert-toast .alert-text { min-width: 0; }
 .toast .close { background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; cursor: pointer; flex: none; }
 .toast .close:hover { color: var(--text); }
+
+.import-parts { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.import-parts .label { color: var(--muted); font-size: 13px; }
+.import-parts .check .hint { margin-left: 8px; color: var(--faint); font-size: 12.5px; }

@@ -1425,3 +1425,21 @@ test('export for a colleague leaves out the logins and no passwords go with it',
   expect(opts).toEqual(expect.objectContaining({ leaveOutLogins: true, includeSecrets: false }));
   expect(errors).toEqual([]);
 });
+
+test('an import from another program lets you choose what comes in', async ({ page }) => {
+  const errors = await open(page, { chooseFile: '/home/user/SecureCRT/Config' });
+  await page.locator('#btn-more').click();
+  await page.getByText('Import from a file…').click();
+  const dlg = page.getByRole('dialog', { name: 'Import from SecureCRT' });
+  await expect(dlg).toContainText('What to import');
+  for (const t of ['Sessions (3)', 'Credential profiles (2)', 'Saved passwords (2)', 'Logon actions, as automation rules (1)', 'Sessions through jump hosts (1)']) await expect(dlg.getByText(t)).toBeVisible();
+  await dlg.getByText('Saved passwords (2)').click();
+  await dlg.getByText('Sessions (3)').click();
+  await expect(dlg.getByText('Put the sessions into a new group named')).toBeHidden();
+  await dlg.getByRole('button', { name: 'Import' }).click();
+  await expect.poll(async () => (await calls(page, 'ImportForeign')).length).toBe(1);
+  const req = (await calls(page, 'ImportForeign'))[0].args[0];
+  expect(req.parts).toEqual({ sessions: false, profiles: true, passwords: false, automation: true, jumpHosts: true });
+  await expect(page.getByRole('dialog', { name: /Imported 2 credential profiles/ })).toBeVisible();
+  expect(errors).toEqual([]);
+});

@@ -21,6 +21,13 @@ in the report. Nothing in the other program is
 changed. SSH sessions from other programs get the *Compatible* algorithm set,
 because these configurations often point at older devices.
 
+Under **What to import** you can leave parts out (each is shown only when the
+file has it): the sessions (to bring in only the credential profiles, after a
+password change on TACACS, say), the credential profiles (a session then uses
+your profile of the same name, or takes the login itself), the saved
+passwords (nothing goes into the vault), the logon actions, and the jump
+hosts (the sessions connect directly).
+
 | Program | What to choose | Passwords |
 |---|---|---|
 | **SecureCRT** (Windows, macOS, Linux) | The `Config\Sessions` folder (`%APPDATA%\VanDyke\Config\Sessions`, `~/Library/Application Support/VanDyke/SecureCRT/Config/Sessions`, `~/.vandyke/SecureCRT/Config/Sessions`), or an XML export (File > Export Settings); the SecureCRT folder itself works too. Folders become groups. A jump session (Firewall = Session) becomes a jump host, and a named SOCKS5 or HTTP firewall from `Config/Firewalls` becomes the session's outbound proxy (its login is not taken over). Credential sets (`Config/Credentials`) become credential profiles, and sessions that use one get that profile, also when you import only a folder inside `Sessions`; importing again uses the profiles already there, and a set that is not among the imported files is taken from a profile of the same name you already have. Serial sessions from Windows, Linux and macOS keep their port and line settings. **Logon Actions** (Automate logon) become automation rules: expect texts are matched literally, values sent at a password prompt or marked Hide are kept hidden in the vault, the session's user name and password become `<USER>` and `<PASS>`, and "Send initial carriage return" is kept. Logon script files are listed in the report. | Old-style and "02"/"03" encrypted passwords, also those of credential sets. If SecureCRT uses a configuration passphrase, enter it in the import dialog and press **Check**. |
