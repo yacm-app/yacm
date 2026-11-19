@@ -9,6 +9,7 @@ import { picker as termPicker, preview as termPreview, resolve as termResolve, T
 import { showLegal, PROJECT_URL, SUPPORT_URL } from './legal.js';
 import { check as checkUpdates } from './updates.js';
 import { whatsNewFor } from './whatsnew.js';
+import { treeSize, TREE_MIN, TREE_MAX } from './treezoom.js';
 
 const SAMPLE = `R1#show ip interface brief
 GigabitEthernet1       10.0.0.1        YES NVRAM  up                    up
@@ -113,10 +114,13 @@ export async function openSettings(onApply, startTab) {
   theme.addEventListener('click', () => tPrev.update());
   const tText = termPicker(st.termText || 'theme', v => { st.termText = v; tPrev.update(); }, { kind: 'text', allowInherit: false });
   const tBg = termPicker(st.termBackground || 'theme', v => { st.termBackground = v; tPrev.update(); }, { kind: 'bg', allowInherit: false });
+  const tsz = h('input', { type: 'number', min: TREE_MIN, max: TREE_MAX, step: 10, value: treeSize(st.treeSize), 'aria-label': 'Session list size in percent', on: { input: e => { const v = +e.target.value; st.treeSize = v >= TREE_MIN && v <= TREE_MAX && v !== 100 ? v : 0; } } });
+  const tszReset = h('button', { type: 'button', class: 'btn small', text: 'Reset', on: { click: () => { tsz.value = '100'; st.treeSize = 0; } } });
   const news = seg([{ value: '', label: 'Red' }, { value: 'orange', label: 'Orange' }, { value: 'blue', label: 'Blue' }, { value: 'off', label: 'Off' }], ['orange', 'blue', 'off'].includes(st.tabActivity) ? st.tabActivity : '', v => (st.tabActivity = v));
   const appearance = () => [
     h('h3', { text: 'Appearance' }),
     h('div', { class: 'field' }, h('span', { text: 'Theme' }), theme),
+    h('div', { class: 'field' }, h('span', { text: 'Session list size (%)' }), h('div', { class: 'inline' }, tsz, tszReset), h('span', { class: 'hint', text: 'Text and icons on the left. Also Ctrl + mouse wheel over the list, or Ctrl + / - / 0 while it has the focus.' })),
     h('div', { class: 'field' }, h('span', { text: 'New output in a tab you are not looking at' }), news, h('span', { class: 'hint', text: 'Colours the name of the tab until you show it. Echo of what you send (Type to many, saved commands, anti-idle) and the first seconds after connecting do not count; the tab menu turns it off for one tab.' })),
     field('Font size', fs, 'Each session and tab can use its own size (Ctrl + mouse wheel, or Aa in the status bar).'),
     h('div', { class: 'field' }, h('span', { text: 'Font weight' }), fw, h('span', { class: 'hint', text: 'Bold text from the device is always heavier (see the preview below).' })),
@@ -130,6 +134,7 @@ export async function openSettings(onApply, startTab) {
   // ---- Terminal ----
   const cos = h('input', { type: 'checkbox', checked: st.copyOnSelect, on: { change: e => (st.copyOnSelect = e.target.checked) } });
   const rc = seg([{ value: 'menu', label: 'Open a menu' }, { value: 'paste', label: 'Paste at once (PuTTY)' }], st.rightClick, v => (st.rightClick = v));
+  const mc = seg([{ value: '', label: 'Nothing' }, { value: 'selection', label: 'Paste the selection' }, { value: 'clipboard', label: 'Paste the clipboard' }], ['selection', 'clipboard'].includes(st.middleClick) ? st.middleClick : '', v => (st.middleClick = v));
   const pk = seg([{ value: 'scroll', label: 'Scroll the terminal' }, { value: 'device', label: 'Send to the device' }], st.pageKeys, v => (st.pageKeys = v));
   const pd = h('input', { type: 'number', min: 0, max: 10000, step: 50, value: st.pasteDelay || 0, on: { input: e => (st.pasteDelay = Math.max(0, +e.target.value || 0)) } });
   const ren = seg([{ value: 'ask', label: 'Ask' }, { value: 'always', label: 'Always rename' }, { value: 'off', label: 'Off' }], st.hostnameRename, v => (st.hostnameRename = v));
@@ -156,6 +161,8 @@ export async function openSettings(onApply, startTab) {
     check('Copy selected text automatically', cos),
     h('div', { class: 'field' }, h('span', { text: 'Right click in the terminal' }), rc,
       h('span', { class: 'hint', text: `The menu has Copy, Paste and Copy and paste, so nothing is sent by accident. With “Paste at once” a right click without a selection pastes straight away. ${IS_MAC ? '⌘V always pastes.' : 'Ctrl+Shift+V, Shift+Insert and Ctrl+V always paste.'}` })),
+    h('div', { class: 'field' }, h('span', { text: 'Middle click in the terminal' }), mc,
+      h('span', { class: 'hint', text: '“The selection” is the text you last selected in any YACM terminal (as on Linux, the same on every system); “the clipboard” is what you copied. Pasting more than one line asks first.' })),
     field('Pause between pasted lines, in ms (0 = none)', pd, 'For slow consoles. Each session can set its own value. Pasting more than one line always asks first.'),
   ];
   const connections = () => [

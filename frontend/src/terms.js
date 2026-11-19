@@ -9,6 +9,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { api, on, state, runtime, colorOf, reload, isNewerType, newerTypeText, saveSettings } from './api.js';
 import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC } from './ui.js';
 import { Highlighter, compileAlerts, stripAnsi } from './highlight.js';
+import { zoomTree, inSidebar, applyTreeZoom } from './treezoom.js';
 import { openPalette, editLibrary } from './snippets.js';
 import { xtermTheme, colorsFor } from './termcolors.js';
 
@@ -75,6 +76,11 @@ function b64ToBytes(b64) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function nodeNow(t) { return state.byId.get(t.node.id) || t.node; }
+
+// lastSelection is the text last selected in any terminal: what a middle
+// click pastes with "Paste the selection", like the X11 primary selection
+// but the same on every system.
+let lastSelection = '';
 
 // tabName is a tab's name on screen: the session's name, with (2), (3) …
 // when the same session (or quick connect address) is open more than once.
@@ -265,7 +271,9 @@ class Tab {
     t.onData(d => this.input(d));
     t.onBinary(d => this.input(d));
     t.onSelectionChange(() => {
-      if (state.settings.copyOnSelect && t.hasSelection()) runtime.copy(t.getSelection());
+      if (!t.hasSelection()) return;
+      lastSelection = t.getSelection();
+      if (state.settings.copyOnSelect) runtime.copy(lastSelection);
     });
     t.attachCustomKeyEventHandler(e => {
       if (e.type !== 'keydown') return true;
@@ -304,11 +312,26 @@ class Tab {
         { label: 'Clear scrollback', action: () => t.clear() },
       ]);
     });
+    // Middle click pastes when Settings > Terminal say so. It never falls
+    // through to the web view, which on Linux would paste the system's
+    // selection on its own.
+    const middle = e => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.middleUntil = Date.now() + 500; // and the paste event it may cause
+      if (e.type !== 'mousedown') return;
+      const how = state.settings.middleClick;
+      if (how === 'selection') this.paste(lastSelection);
+      else if (how === 'clipboard') this.pasteFromClipboard();
+    };
+    for (const ev of ['mousedown', 'mouseup', 'auxclick']) this.el.addEventListener(ev, middle, true);
     // Native paste (Ctrl+V inside the webview) goes through the same check.
     this.el.addEventListener('paste', e => {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (this.nativePasteUntil && Date.now() < this.nativePasteUntil) return; // already pasted by the shortcut
+      if (this.middleUntil && Date.now() < this.middleUntil) return; // Linux: the system selection on a middle click
       this.paste(e.clipboardData?.getData('text') || '');
     }, true);
     // Ctrl + mouse wheel changes the font size of this tab only.
@@ -1213,6 +1236,7 @@ export function fontWeights() {
 }
 
 export function applySettings() {
+  applyTreeZoom();
   const weights = fontWeights();
   for (const t of tabs.values()) {
     t.applyColors();
@@ -1628,6 +1652,16 @@ function renderBroadcast() {
 
 function globalKeys(e) {
   if (anyDialogOpen()) return;
+  if (inSidebar() && (e.ctrlKey || e.metaKey) && !e.altKey) {
+    // In the session list Ctrl + / - / 0 (with or without Shift) size the
+    // list, not the terminal.
+    const step = { Equal: 1, NumpadAdd: 1, Minus: -1, NumpadSubtract: -1, Digit0: 0, Numpad0: 0 }[e.code];
+    if (step !== undefined) {
+      e.preventDefault();
+      zoomTree(step);
+      return;
+    }
+  }
   if (paneMoveKey(e) && view.layout !== '1' && active) {
     e.preventDefault();
     e.stopPropagation();

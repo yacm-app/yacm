@@ -1286,3 +1286,63 @@ test('a tab not on screen shows new output in its name, not the echo of what was
   await expect(page.locator('.tab', { hasText: 'core-sw2' })).not.toHaveClass(/news/);
   expect(errors).toEqual([]);
 });
+
+test('the session list has its own size: Ctrl + wheel over it, Ctrl +/-/0 while it has the focus', async ({ page }) => {
+  const errors = await open(page);
+  const zoom = () => page.locator('#sidebar').evaluate(el => getComputedStyle(el).getPropertyValue('--tree-zoom').trim());
+  const rowHeight = () => page.locator('#tree .row').first().evaluate(el => el.getBoundingClientRect().height);
+  const before = await rowHeight();
+  await page.locator('#tree').hover();
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up('Control');
+  await expect.poll(zoom).toBe('1.1');
+  await page.locator('#tree').focus();
+  await page.keyboard.press('Control+Equal');
+  await expect.poll(zoom).toBe('1.2');
+  expect(await rowHeight()).toBeGreaterThan(before * 1.15);
+  await expect.poll(async () => (await calls(page, 'SaveSettings')).at(-1)?.args[0].treeSize).toBe(120);
+  await page.keyboard.press('Control+Minus');
+  await page.keyboard.press('Control+Minus');
+  await page.keyboard.press('Control+Minus');
+  await expect.poll(zoom).toBe('0.9');
+  await page.keyboard.press('Control+0');
+  await expect.poll(zoom).toBe('1');
+  await expect.poll(async () => (await calls(page, 'SaveSettings')).at(-1)?.args[0].treeSize).toBe(0);
+  // In a terminal the keys still size the terminal.
+  const [id] = await connectTabs(page, ['core-sw1']);
+  await page.locator('.term:not([hidden]) .term-body').click();
+  await page.keyboard.press('Control+Shift+Equal');
+  await expect(page.locator('#statusbar .font-size-btn')).toContainText('Aa15');
+  await expect.poll(zoom).toBe('1');
+  expect(id).toBeTruthy();
+  expect(errors).toEqual([]);
+});
+
+test('a middle click pastes the last selection or the clipboard, as set, and nothing by default', async ({ page }) => {
+  const errors = await open(page);
+  const [id] = await connectTabs(page, ['core-sw1']);
+  await page.evaluate(i => window.__emit('tab:data', { tabId: i, data: btoa('R1#show clock\r\n12:00:01 CET\r\nR1#') }), id);
+  const body = page.locator('.term:not([hidden]) .term-body');
+  const writes = async () => (await calls(page, 'Write')).map(c => c.args[1]).join('');
+  // Select "show clock" with a double click and a drag.
+  const box = await body.boundingBox();
+  await page.mouse.move(box.x + 30, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + 10, { steps: 5 });
+  await page.mouse.up();
+  await page.evaluate(() => { window.__clipboard = 'from clipboard'; });
+  await page.mouse.click(box.x + 200, box.y + 200, { button: 'middle' });
+  await page.waitForTimeout(200);
+  expect(await writes()).toBe('');
+  for (const [how, want] of [['selection', /how/], ['clipboard', /from clipboard/]]) {
+    await page.locator('#btn-settings').click();
+    await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+    await page.getByRole('radio', { name: how === 'selection' ? 'Paste the selection' : 'Paste the clipboard' }).click();
+    await page.getByRole('button', { name: 'Save settings' }).click();
+    const n = (await calls(page, 'Write')).length;
+    await page.mouse.click(box.x + 200, box.y + 200, { button: 'middle' });
+    await expect.poll(async () => (await calls(page, 'Write')).slice(n).map(c => c.args[1]).join('')).toMatch(want);
+  }
+  expect(errors).toEqual([]);
+});

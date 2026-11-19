@@ -116,6 +116,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .icon-btn:hover { color: var(--text); border-color: var(--muted); }
 .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
+#sidebar > .side-head, #sidebar > .tree, #sidebar > .clusters { zoom: var(--tree-zoom, 1); }
 .tree { flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 4px 0 12px; outline: none; }
 .row { display: flex; align-items: center; gap: 7px; height: 28px; padding-right: 10px; cursor: default; user-select: none; white-space: nowrap; border-left: 2px solid transparent; }
 .row:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }

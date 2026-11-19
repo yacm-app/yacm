@@ -7,6 +7,7 @@ import { initTree, render as renderTree } from './tree.js';
 import { atStart } from './guide.js';
 import { initUpdates } from './updates.js';
 import { initTerms, openSession, openQuick, openMany, applySettings, restoreTabs } from './terms.js';
+import { initTreeZoom } from './treezoom.js';
 import { initPrompts } from './prompts.js';
 import { initFiles, openFiles } from './files.js';
 import { initServers } from './servers.js';
@@ -137,6 +138,7 @@ async function boot() {
 
   initPrompts();
   initTerms();
+  initTreeZoom();
   initFiles();
   initServers();
   initTree({
