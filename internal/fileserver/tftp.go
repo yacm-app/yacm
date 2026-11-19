@@ -128,7 +128,7 @@ func startTFTP(cfg Config) (*TFTP, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := net.ListenUDP("udp", ua)
+	c, err := listenUDP(ua)
 	if err != nil {
 		return nil, listenError(err, cfg.Port)
 	}

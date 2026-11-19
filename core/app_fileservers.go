@@ -55,7 +55,7 @@ func (a *App) FileServerAllowPort(port int) error {
 	if err != nil {
 		applog.Warnf("allow port %d: %v", port, err)
 	} else {
-		applog.Infof("ports from %d allowed without administrator rights (%s)", port, fileserver.LowPortsConfName())
+		applog.Infof("port %d allowed without administrator rights (%s)", port, fileserver.LowPortsHow())
 	}
 	return err
 }

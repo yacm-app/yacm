@@ -204,8 +204,11 @@ Hovering shows each label.
   - A file name with spaces goes into the command with underscores, and the
     servers send the file for it.
   - On Linux, ports below 1024 need administrator rights: for TFTP on port 69
-    YACM offers to allow them once (the system asks for the password; the
-    setting is kept in `/etc/sysctl.d/60-yacm-file-servers.conf`).
+    (or SCP on 22) YACM offers to give itself that right, and only itself
+    (`setcap cap_net_bind_service=+ep` on its program; the system asks for the
+    password, and again after an update). Versions before 1.1 allowed these
+    ports for every program instead; to undo that, delete
+    `/etc/sysctl.d/60-yacm-file-servers.conf` and restart the computer.
 
 ## Tunnels and proxies
 

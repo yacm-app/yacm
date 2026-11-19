@@ -141,16 +141,16 @@ export function deviceNotes(platform, kind, port) {
   return notes;
 }
 
-// allowPort asks once whether programs may listen on low ports (Linux), so
-// the TFTP server gets port 69, which most network devices insist on.
+// allowPort asks whether YACM may listen on low ports (Linux), so the TFTP
+// server gets port 69, which most network devices insist on.
 /** @param {number} port @returns {Promise<boolean>} */
 async function allowPort(port) {
   const ok = await confirmDialog({
     title: `Allow port ${port}?`,
     message: h('div', {},
       h('p', { text: `On Linux only programs with administrator rights may use ports below 1024, and most network devices copy over TFTP only from port 69.` }),
-      h('p', { text: `YACM can allow programs on this computer to use ports from ${port} up. The system asks for your password once; the setting stays after a restart and after YACM updates (it is kept in /etc/sysctl.d/60-yacm-file-servers.conf).` }),
-      h('p', { class: 'hint', text: 'On a computer other people log in to as well, they could then also use these ports. Instead you can choose a port above 1024 if the device can give a port.' })),
+      h('p', { text: `YACM can give itself the right to use these ports (cap_net_bind_service on its program); other programs do not get it. The system asks for your password, again after each YACM update.` }),
+      h('p', { class: 'hint', text: 'Instead you can choose a port above 1024 if the device can give a port.' })),
     ok: `Allow port ${port}…`,
   });
   if (!ok) return false;

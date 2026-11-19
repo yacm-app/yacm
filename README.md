@@ -54,7 +54,7 @@ the copy command written for you. Website: [yacm.app](https://yacm.app).
   sets and saved passwords), Xshell, MobaXterm, mRemoteNG, PuTTY, Ásbrú,
   `~/.ssh/config`, CSV and Excel lists, and NetBox.
 - **Free, open and portable.** GPL-licensed; runs without installation or
-  administrator rights (except once for TFTP on port 69 under Linux), no account. It even
+  administrator rights (except for TFTP on port 69 under Linux), no account. It even
   runs from a USB stick.
 
 ## Screenshots

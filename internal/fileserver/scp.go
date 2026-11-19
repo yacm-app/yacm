@@ -93,7 +93,7 @@ func startSCP(cfg Config, keyFile string) (*SCP, error) {
 	if err != nil {
 		return nil, err
 	}
-	ln, err := net.Listen("tcp", net.JoinHostPort(cfg.Bind, strconv.Itoa(cfg.Port)))
+	ln, err := listenTCP(net.JoinHostPort(cfg.Bind, strconv.Itoa(cfg.Port)), cfg.Port)
 	if err != nil {
 		return nil, listenError(err, cfg.Port)
 	}

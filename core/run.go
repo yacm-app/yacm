@@ -18,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"github.com/yacm-app/yacm/internal/applog"
+	"github.com/yacm-app/yacm/internal/fileserver"
 )
 
 // Config is what a program built on YACM gives Main.
@@ -35,6 +36,10 @@ type Config struct {
 
 // Main runs YACM: data folder, log, the window. It returns the exit code.
 func Main(cfg Config) int {
+	if len(os.Args) > 1 && os.Args[1] == fileserver.BindHelperArg {
+		// Linux: opens a port below 1024 for the YACM that started it.
+		return fileserver.BindHelper(os.Args[2:])
+	}
 	args := waitForPID(os.Args[1:])
 	loc, err := resolveDataDir()
 	if err != nil {
