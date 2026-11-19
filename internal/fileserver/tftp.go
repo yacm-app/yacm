@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yacm-app/yacm/internal/xfer"
 )
 
 // TFTP (RFC 1350) with the blksize, timeout and tsize options (RFC 2347,
@@ -233,13 +234,13 @@ func (s *TFTP) transfer(req *tftpRequest, peer *net.UDPAddr, in chan []byte) {
 	var opts [][2]string
 	var size int64 = -1
 	if !upload {
-		st, err := os.Stat(path)
+		st, err := s.cfg.files.Stat(path)
 		if err != nil || st.IsDir() {
 			fail(errNotFound, "file not found")
 			return
 		}
 		size = st.Size()
-	} else if _, err := os.Stat(path); err == nil && !s.cfg.Overwrite {
+	} else if _, err := s.cfg.files.Stat(path); err == nil && !s.cfg.Overwrite {
 		fail(errExists, "file already exists")
 		return
 	}
@@ -274,7 +275,7 @@ func (s *TFTP) transfer(req *tftpRequest, peer *net.UDPAddr, in chan []byte) {
 	}
 	ev.Total = size
 	s.cfg.emit(ev)
-	t := &tftpConn{c: c, in: in, peer: peer, timeout: timeout, quit: s.quit}
+	t := &tftpConn{files: s.cfg.files, c: c, in: in, peer: peer, timeout: timeout, quit: s.quit}
 	var n int64
 	if upload {
 		n, err = t.receive(path, blk, limit, opts, func(done int64) { ev.Done = done; ev.State = "progress"; s.cfg.emitProgress(ev) })
@@ -321,6 +322,7 @@ func (t *tftpConn) linger() {
 }
 
 type tftpConn struct {
+	files   *xfer.Folder // the shared folder
 	lastAck []byte       // final ACK of an upload, sent again if the device repeats its last block
 	c       *net.UDPConn // the server's socket: replies come from its port
 	in      chan []byte  // packets from peer
@@ -371,7 +373,7 @@ func (t *tftpConn) exchange(pkt []byte, _ []byte, want func([]byte) (bool, error
 }
 
 func (t *tftpConn) send(path string, blk int, opts [][2]string, tick func(int64)) (int64, error) {
-	f, err := os.Open(path)
+	f, err := t.files.Open(path)
 	if err != nil {
 		return 0, err
 	}
@@ -416,7 +418,7 @@ func (t *tftpConn) send(path string, blk int, opts [][2]string, tick func(int64)
 
 func (t *tftpConn) receive(path string, blk int, limit int64, opts [][2]string, tick func(int64)) (int64, error) {
 	tmp := path + ".part"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	f, err := t.files.Create(tmp)
 	if err != nil {
 		_, _ = t.c.WriteToUDP(errorPacket(errAccess, "cannot write the file"), t.peer)
 		return 0, err
@@ -425,7 +427,7 @@ func (t *tftpConn) receive(path string, blk int, limit int64, opts [][2]string, 
 	defer func() {
 		f.Close()
 		if !ok {
-			os.Remove(tmp)
+			_ = t.files.Remove(tmp)
 		}
 	}()
 	buf := make([]byte, maxBlock+4)
@@ -475,8 +477,8 @@ func (t *tftpConn) receive(path string, blk int, limit int64, opts [][2]string, 
 				_, _ = t.c.WriteToUDP(errorPacket(errDiskFull, "write error"), t.peer)
 				return got, err
 			}
-			_ = os.Remove(path)
-			if err := os.Rename(tmp, path); err != nil {
+			_ = t.files.Remove(path)
+			if err := t.files.Rename(tmp, path); err != nil {
 				_, _ = t.c.WriteToUDP(errorPacket(errAccess, "cannot save the file"), t.peer)
 				return got, err
 			}

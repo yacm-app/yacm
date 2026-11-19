@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -100,7 +99,7 @@ func (s *HTTP) get(w http.ResponseWriter, r *http.Request, remote, p string) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	st, err := os.Stat(full)
+	st, err := s.cfg.files.Stat(full)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -113,7 +112,7 @@ func (s *HTTP) get(w http.ResponseWriter, r *http.Request, remote, p string) {
 		s.listing(w, full, p)
 		return
 	}
-	f, err := os.Open(full)
+	f, err := s.cfg.files.Open(full)
 	if err != nil {
 		http.Error(w, "cannot read", http.StatusForbidden)
 		return
@@ -144,7 +143,7 @@ type rw struct {
 func (r *rw) Write(b []byte) (int, error) { return r.body.Write(b) }
 
 func (s *HTTP) listing(w http.ResponseWriter, dir, p string) {
-	des, err := os.ReadDir(dir)
+	des, err := s.cfg.files.ReadDir(dir)
 	if err != nil {
 		http.Error(w, "cannot read", http.StatusForbidden)
 		return
@@ -182,7 +181,7 @@ func (s *HTTP) put(w http.ResponseWriter, r *http.Request, remote, p string) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	if _, err := os.Stat(full); err == nil && !s.cfg.Overwrite {
+	if _, err := s.cfg.files.Stat(full); err == nil && !s.cfg.Overwrite {
 		http.Error(w, "file already exists", http.StatusConflict)
 		return
 	}
@@ -198,7 +197,7 @@ func (s *HTTP) put(w http.ResponseWriter, r *http.Request, remote, p string) {
 	ev := Event{Kind: "http", Remote: remote, File: displayName(s.cfg.Folder, full), Upload: true, Total: r.ContentLength, State: "start"}
 	s.cfg.emit(ev)
 	tmp := full + ".part"
-	f, err := os.Create(tmp)
+	f, err := s.cfg.files.Create(tmp)
 	if err != nil {
 		http.Error(w, "cannot write", http.StatusInternalServerError)
 		return
@@ -220,12 +219,12 @@ func (s *HTTP) put(w http.ResponseWriter, r *http.Request, remote, p string) {
 		err = fmt.Errorf("got %d of %d bytes", pw.n, r.ContentLength)
 	}
 	if err == nil {
-		_ = os.Remove(full)
-		err = os.Rename(tmp, full)
+		_ = s.cfg.files.Remove(full)
+		err = s.cfg.files.Rename(tmp, full)
 	}
 	ev.Done = pw.n
 	if err != nil {
-		os.Remove(tmp)
+		_ = s.cfg.files.Remove(tmp)
 		ev.State, ev.Error = "error", err.Error()
 		s.cfg.emit(ev)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

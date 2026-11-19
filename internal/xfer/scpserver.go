@@ -27,6 +27,15 @@ type SCPHandler struct {
 	MaxSize int64
 	// Done is told about each finished file.
 	Done func(local string, size int64, upload bool, err error)
+	// Files opens, renames and removes the files (nil: the os package).
+	Files Files
+}
+
+func (h SCPHandler) files() Files {
+	if h.Files == nil {
+		return osFiles{}
+	}
+	return h.Files
 }
 
 // IsSCPCommand reports an exec command this handler serves.
@@ -107,7 +116,7 @@ func (h SCPHandler) sink(w io.Writer, r *bufio.Reader, target string, fail func(
 			return fail(err.Error())
 		}
 		tmp := local + ".part"
-		out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		out, err := h.files().OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return fail("cannot write the file: " + err.Error())
 		}
@@ -121,14 +130,14 @@ func (h SCPHandler) sink(w io.Writer, r *bufio.Reader, target string, fail func(
 			err = scpAck(r)
 		}
 		if err == nil {
-			_ = os.Remove(local)
-			err = os.Rename(tmp, local)
+			_ = h.files().Remove(local)
+			err = h.files().Rename(tmp, local)
 		}
 		if h.Done != nil {
 			h.Done(local, size, true, err)
 		}
 		if err != nil {
-			_ = os.Remove(tmp)
+			_ = h.files().Remove(tmp)
 			return fail("transfer failed: " + err.Error())
 		}
 		_, _ = w.Write([]byte{0})
@@ -143,9 +152,12 @@ func (h SCPHandler) source(w io.Writer, r *bufio.Reader, target string, fail fun
 	if err != nil {
 		return fail(err.Error())
 	}
-	in, err := os.Open(local)
+	in, err := h.files().Open(local)
 	if err != nil {
-		return fail(errors.Unwrap(err).Error())
+		if u := errors.Unwrap(err); u != nil {
+			err = u
+		}
+		return fail(err.Error())
 	}
 	defer in.Close()
 	st, err := in.Stat()

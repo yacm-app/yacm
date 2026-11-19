@@ -45,6 +45,8 @@ type Config struct {
 
 	allow []*net.IPNet
 	touch func()
+	// files reaches only the shared folder (os.Root).
+	files *xfer.Folder
 
 	events func(Event)
 	mu     *sync.Mutex
@@ -231,6 +233,9 @@ func (m *Manager) Start(cfg Config) (Status, error) {
 		cfg.MaxUpload = DefaultMaxUpload
 	}
 	m.Stop(cfg.Kind)
+	if cfg.files, err = xfer.OpenFolder(cfg.Folder); err != nil {
+		return Status{}, fmt.Errorf("cannot open the folder %s: %v", cfg.Folder, err)
+	}
 	cfg.events = m.events
 	kind := cfg.Kind
 	cfg.touch = func() { m.touch(kind) }
@@ -263,6 +268,7 @@ func (m *Manager) Start(cfg Config) (Status, error) {
 		return Status{}, fmt.Errorf("unknown server %q", cfg.Kind)
 	}
 	if err != nil {
+		_ = cfg.files.Close()
 		return Status{}, err
 	}
 	cfg.Port = s.Port()
@@ -312,7 +318,7 @@ func (m *Manager) armIdle(kind string) {
 // Stop stops the server of kind.
 func (m *Manager) Stop(kind string) {
 	m.mu.Lock()
-	s := m.servers[kind]
+	s, cfg := m.servers[kind], m.cfgs[kind]
 	delete(m.servers, kind)
 	delete(m.cfgs, kind)
 	if t := m.timers[kind]; t != nil {
@@ -322,6 +328,9 @@ func (m *Manager) Stop(kind string) {
 	m.mu.Unlock()
 	if s != nil {
 		_ = s.Close()
+	}
+	if cfg.files != nil {
+		_ = cfg.files.Close()
 	}
 }
 

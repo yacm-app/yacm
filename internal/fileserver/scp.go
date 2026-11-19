@@ -245,6 +245,7 @@ func (s *SCP) session(ch ssh.Channel, reqs <-chan *ssh.Request, remote string) {
 func (s *SCP) handler(remote string) xfer.SCPHandler {
 	limit, lerr := s.cfg.uploadLimit()
 	return xfer.SCPHandler{
+		Files:   s.cfg.files,
 		MaxSize: limit,
 		Resolve: func(p, name string, write bool) (string, error) {
 			if write && !s.cfg.AllowUpload {
@@ -261,12 +262,12 @@ func (s *SCP) handler(remote string) xfer.SCPHandler {
 				full = xfer.SpaceAlias(full)
 			}
 			if write {
-				if _, err := os.Stat(full); err == nil && !s.cfg.Overwrite {
+				if _, err := s.cfg.files.Stat(full); err == nil && !s.cfg.Overwrite {
 					return "", errors.New("file already exists")
 				}
 				s.cfg.emit(Event{Kind: "scp", Remote: remote, File: displayName(s.cfg.Folder, full), Upload: true, State: "start"})
 			} else {
-				st, err := os.Stat(full)
+				st, err := s.cfg.files.Stat(full)
 				if err != nil {
 					return "", errors.New("file not found")
 				}
