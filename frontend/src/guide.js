@@ -46,7 +46,7 @@ export function startGuide(info, after) {
   const body = h('div', { class: 'guide' },
     h('p', { class: 'lead', text: 'YACM keeps your SSH, telnet and serial sessions, logs you in with credential profiles and works through jump hosts. Pick how you want to start; everything here can also be done later from the buttons above the session list.' }),
     vaultNote,
-    card('Bring your sessions over', 'Import from SecureCRT, Xshell, MobaXterm, mRemoteNG, PuTTY, Ásbrú, ~/.ssh/config, a CSV or Excel list, or NetBox. Saved passwords go into the vault.',
+    card('Bring your sessions over', 'Import from SecureCRT, Xshell, MobaXterm, mRemoteNG, Royal TS, PuTTY, Ásbrú, ~/.ssh/config, a CSV or Excel list, or NetBox. Saved passwords go into the vault.',
       btn('Import sessions…', e => importMenu(e.currentTarget, async () => { dlg?.close(); await after(); }), true)),
     found,
     card('Use your team’s library', 'If a colleague published the team’s devices as a library file (on a share or in git), add it and link its logins to your own profiles.',

@@ -51,8 +51,8 @@ the copy command written for you. Website: [yacm.app](https://yacm.app).
   meet NIS2, ISO 27001 and PCI DSS
   ([details](docs/security-compliance.md)).
 - **Switch in minutes.** Imports SecureCRT (with logon actions, credential
-  sets and saved passwords), Xshell, MobaXterm, mRemoteNG, PuTTY, Ásbrú,
-  `~/.ssh/config`, CSV and Excel lists, and NetBox.
+  sets and saved passwords), Xshell, MobaXterm, mRemoteNG, Royal TS, PuTTY,
+  Ásbrú, `~/.ssh/config`, CSV and Excel lists, and NetBox.
 - **Free, open and portable.** GPL-licensed; runs without installation or
   administrator rights (except for TFTP on port 69 under Linux), no account. It even
   runs from a USB stick.

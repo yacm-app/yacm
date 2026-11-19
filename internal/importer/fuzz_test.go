@@ -16,7 +16,7 @@ import (
 // must never crash or hang YACM. These fuzz tests feed mutated versions of
 // the sample configurations to every importer.
 
-var fuzzKinds = []Kind{KindAsbru, KindSecureCRT, KindSecureCRTXML, KindXshell, KindMobaXterm, KindMRemoteNG, KindPuTTYReg, KindSSHConfig}
+var fuzzKinds = []Kind{KindAsbru, KindSecureCRT, KindSecureCRTXML, KindXshell, KindMobaXterm, KindMRemoteNG, KindPuTTYReg, KindSSHConfig, KindRoyalTS}
 
 func FuzzForeign(f *testing.F) {
 	seeds := map[Kind]string{
@@ -28,6 +28,7 @@ func FuzzForeign(f *testing.F) {
 		KindMRemoteNG:    "testdata/foreign/mremoteng/confCons.xml",
 		KindPuTTYReg:     "testdata/foreign/putty-sessions.reg",
 		KindSSHConfig:    "testdata/foreign/ssh/config",
+		KindRoyalTS:      "testdata/foreign/royalts/test.rtsz",
 	}
 	for i, k := range fuzzKinds {
 		if data, err := os.ReadFile(seeds[k]); err == nil {

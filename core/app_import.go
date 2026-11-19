@@ -357,6 +357,7 @@ var passwordLabels = map[importer.Kind]string{
 	importer.KindSecureCRTXML: "SecureCRT configuration passphrase",
 	importer.KindMRemoteNG:    "mRemoteNG password",
 	importer.KindXshell:       "Xshell master password",
+	importer.KindRoyalTS:      "Royal TS document password",
 }
 
 // PreviewForeign dry-runs a foreign import (nothing is stored).

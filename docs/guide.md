@@ -30,7 +30,7 @@ later* starts without a vault; YACM then asks for passwords when connecting.
 The welcome screen offers three ways in:
 
 - **Import your sessions** from SecureCRT, Xshell, MobaXterm, mRemoteNG,
-  PuTTY, Ásbrú, `~/.ssh/config`, a CSV or Excel list or NetBox
+  Royal TS, PuTTY, Ásbrú, `~/.ssh/config`, a CSV or Excel list or NetBox
   ([details](import-export.md)). Configurations in their default locations
   are found automatically.
 - **Add your team's library**, if a colleague has published one (see

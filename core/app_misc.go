@@ -43,7 +43,7 @@ func (a *App) ChooseFile(title string, kind string) (string, error) {
 		opts.Filters = []wruntime.FileFilter{{DisplayName: "Ásbrú / PAC config (*.yml, *.yaml)", Pattern: "*.yml;*.yaml"}}
 	case "import":
 		opts.Filters = []wruntime.FileFilter{
-			{DisplayName: "Sessions (YACM, Ásbrú, other programs, CSV, Excel)", Pattern: "*.yacm;*.json;*.yml;*.yaml;*.xml;*.ini;*.mxtsessions;*.reg;*.csv;*.tsv;*.xlsx;*.xsh;config"},
+			{DisplayName: "Sessions (YACM, Ásbrú, other programs, CSV, Excel)", Pattern: "*.yacm;*.json;*.yml;*.yaml;*.xml;*.ini;*.mxtsessions;*.rtsz;*.reg;*.csv;*.tsv;*.xlsx;*.xsh;config"},
 			{DisplayName: "All files", Pattern: "*"},
 		}
 	case "table":

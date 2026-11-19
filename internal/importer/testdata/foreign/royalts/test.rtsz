@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RTSZDocument>
+<RoyalDocument><ID>doc-1</ID><Name>Test-Doc-2026</Name><PasswordHash></PasswordHash></RoyalDocument>
+<RoyalFolder><ID>f-conn</ID><ParentID>doc-1</ParentID><Name>Connections</Name><PositionNr>0</PositionNr></RoyalFolder>
+<RoyalFolder><ID>f-cred</ID><ParentID>doc-1</ParentID><Name>Credentials</Name><PositionNr>1</PositionNr></RoyalFolder>
+<RoyalTrash><ID>trash</ID><ParentID>doc-1</ParentID><Name>Trash</Name></RoyalTrash>
+<RoyalCredential><ID>c-1</ID><ParentID>f-cred</ParentID><Name>Company login</Name><UserName>netadmin</UserName><Password>AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tng5+71/AMKERgfJi00O0JJW/CfBQi9sbcUEM7Nor1M4UMge/KoJXKBiExAdRJUpUQ=</Password></RoyalCredential>
+<RoyalSecureGateway><ID>gw-1</ID><ParentID>f-conn</ParentID><Name>Bastion</Name><PositionNr>9</PositionNr><SecureGatewayHost>192.0.2.1</SecureGatewayHost><SecureGatewayPort>2222</SecureGatewayPort><SecureGatewayCredentialMode>1</SecureGatewayCredentialMode><SecureGatewayUsername>jump</SecureGatewayUsername><SecureGatewayPassword>AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tng5+71/AMKERgfJi00O0JJW/CfBQi9sbcUEM7Nor1M4UhAVeMLdKfHSyqQppQA7Lc=</SecureGatewayPassword></RoyalSecureGateway>
+<RoyalFolder><ID>f-co</ID><ParentID>f-conn</ParentID><Name>Company</Name><PositionNr>1</PositionNr><CredentialMode>3</CredentialMode><CredentialId>c-1</CredentialId><SecureGatewayUsageMode>2</SecureGatewayUsageMode><SecureGatewayID>gw-1</SecureGatewayID></RoyalFolder>
+<RoyalSSHConnection><ID>s-1</ID><ParentID>f-co</ParentID><Name>SSH1</Name><PositionNr>1</PositionNr><URI>192.0.2.11</URI><Port>22</Port><CredentialFromParent>True</CredentialFromParent><SecureGatewayFromParent>True</SecureGatewayFromParent><Description>core switch</Description></RoyalSSHConnection>
+<RoyalSSHConnection><ID>s-2</ID><ParentID>f-co</ParentID><Name>Telnet1</Name><PositionNr>0</PositionNr><URI>192.0.2.12</URI><Port>23</Port><IsTelnetConnection>True</IsTelnetConnection><CredentialMode>2</CredentialMode><CredentialUsername>admin</CredentialUsername><CredentialPassword>AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tng5+71/AMKERgfJi00O0JJA2VkO9JUYz6YZwxAFmpEANdtePU57cJeXN9bOcjmJTI=</CredentialPassword></RoyalSSHConnection>
+<RoyalSSHConnection><ID>s-3</ID><ParentID>f-conn</ParentID><Name>Console</Name><PositionNr>2</PositionNr><IsSerialPortConnection>True</IsSerialPortConnection><PortName>COM4</PortName><BaudRate>115200</BaudRate><DataBits>8</DataBits><Parity>2</Parity><StopBits>1</StopBits></RoyalSSHConnection>
+<RoyalSSHConnection><ID>s-4</ID><ParentID>f-conn</ParentID><Name>KeyHost</Name><PositionNr>3</PositionNr><URI>192.0.2.14</URI><PrivateKeyPath>C:\keys\id_ed25519</PrivateKeyPath><Passphrase>AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tng5+71/AMKERgfJi00O0JJp0LlK3g6RjqOw7WSebk4RBhGhfAOh809TKyp1dnm1RI=</Passphrase></RoyalSSHConnection>
+<RoyalSSHConnection><ID>s-5</ID><ParentID>trash</ParentID><Name>Old</Name><URI>192.0.2.99</URI></RoyalSSHConnection>
+<RoyalRDSConnection><ID>r-1</ID><ParentID>f-conn</ParentID><Name>Windows server</Name><URI>192.0.2.50</URI></RoyalRDSConnection>
+</RTSZDocument>

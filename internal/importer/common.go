@@ -33,6 +33,7 @@ const (
 	KindPuTTYDir     Kind = "putty-dir"     // ~/.putty/sessions
 	KindPuTTYLive    Kind = "putty-live"    // Windows registry of this computer
 	KindSSHConfig    Kind = "ssh-config"    // OpenSSH client config
+	KindRoyalTS      Kind = "royalts"       // Royal TS / Royal TSX document (.rtsz)
 )
 
 // Labels are shown in the UI.
@@ -47,6 +48,7 @@ var Labels = map[Kind]string{
 	KindPuTTYDir:     "PuTTY",
 	KindPuTTYLive:    "PuTTY",
 	KindSSHConfig:    "OpenSSH config",
+	KindRoyalTS:      "Royal TS",
 }
 
 // Options carry what some formats need to decrypt passwords.
@@ -77,7 +79,7 @@ var ErrCancelled = errors.New("import cancelled")
 func (o Options) cancelled() bool { return o.Cancelled != nil && o.Cancelled() }
 
 // ErrUnknownFormat is returned when a file cannot be recognised.
-var ErrUnknownFormat = errors.New("unrecognised file: expected an export from YACM, Ásbrú, SecureCRT, Xshell, MobaXterm, mRemoteNG, PuTTY or an OpenSSH config")
+var ErrUnknownFormat = errors.New("unrecognised file: expected an export from YACM, Ásbrú, SecureCRT, Xshell, MobaXterm, mRemoteNG, Royal TS, PuTTY or an OpenSSH config")
 
 const maxFile = 64 << 20
 
@@ -349,6 +351,9 @@ func detectData(name string, data []byte) (Kind, error) {
 		if strings.Contains(head, "<VanDyke") {
 			return KindSecureCRTXML, nil
 		}
+		if strings.Contains(head, "<RoyalDocument") || strings.Contains(head, "<RTSZDocument") || strings.HasSuffix(lower, ".rtsz") {
+			return KindRoyalTS, nil
+		}
 		if strings.Contains(head, "Connections") && (strings.Contains(head, "ConfVersion") || strings.Contains(head, "mrng")) {
 			return KindMRemoteNG, nil
 		}
@@ -417,6 +422,8 @@ func runData(kind Kind, path string, data []byte, parentID string, opts Options)
 		return importMobaXterm(decodeText(data), parentID)
 	case KindMRemoteNG:
 		return importMRemoteNG(data, parentID, opts)
+	case KindRoyalTS:
+		return importRoyalTS(data, parentID, opts)
 	case KindPuTTYReg:
 		return importPuTTYReg(decodeText(data), parentID)
 	case KindSSHConfig:

@@ -381,7 +381,7 @@ export function render() {
   }
   counts = null;
   if (!state.nodes.length) {
-    tree.append(h('div', { class: 'tree-empty' }, 'No sessions yet. Use + to add one, or the import button next to it to bring them over from SecureCRT, Xshell, MobaXterm, mRemoteNG, PuTTY, Ásbrú, ~/.ssh/config, a CSV or Excel list, or NetBox.'));
+    tree.append(h('div', { class: 'tree-empty' }, 'No sessions yet. Use + to add one, or the import button next to it to bring them over from SecureCRT, Xshell, MobaXterm, mRemoteNG, Royal TS, PuTTY, Ásbrú, ~/.ssh/config, a CSV or Excel list, or NetBox.'));
     if (!foundAsked) {
       foundAsked = true;
       api.ImportSourceCounts().then(list => { found = (list || []).filter(s => s.sessions !== 0); if (found.length && !state.nodes.length) render(); }).catch(() => {});
