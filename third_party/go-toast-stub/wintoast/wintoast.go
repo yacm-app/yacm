@@ -1,6 +1,8 @@
 // Package wintoast is a no-op stand-in; see ../README.md.
 package wintoast
 
+import "errors"
+
 // IClassFactory mirrors the upstream COM type.
 type IClassFactory struct{}
 
@@ -11,3 +13,9 @@ var ClassFactory = &IClassFactory{}
 func registerClassFactory(*IClassFactory) error { return nil }
 
 var _ = registerClassFactory
+
+// ErrUnsupported is returned by Push.
+var ErrUnsupported = errors.New("toast notifications are disabled in this build")
+
+// Push does nothing.
+func Push(appID, xml string) error { return ErrUnsupported }

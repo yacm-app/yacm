@@ -36,8 +36,23 @@ type Input struct {
 	Placeholder string
 }
 
+// Duration mirrors the upstream type.
+type Duration string
+
+// Short toast duration.
+const Short Duration = "short"
+
+// Audio mirrors the upstream type.
+type Audio string
+
+// Default sound.
+const Default Audio = "ms-winsoundevent:Notification.Default"
+
 // Notification mirrors the upstream type.
 type Notification struct {
+	AppID               string
+	Duration            Duration
+	Audio               Audio
 	Title               string
 	Body                string
 	ActivationType      ActivationType
