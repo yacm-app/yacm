@@ -478,6 +478,20 @@ type BulkChange struct {
 	AddClusters    []string `json:"addClusters"`
 	RemoveClusters []string `json:"removeClusters"`
 	ParentID       *string  `json:"parentId"` // move the selected nodes into this group ("" = top level)
+	// Protocol switches SSH and telnet sessions to "ssh" or "telnet" (serial
+	// sessions are left alone). A port that was the old default becomes the
+	// new default.
+	Protocol *string `json:"protocol"`
+	// DropLoginRules removes the automation rules that answer a telnet login
+	// (sending <USER> or <PASS>) from sessions that go to SSH, which logs in
+	// itself: they would otherwise answer a later "Password:" prompt.
+	DropLoginRules bool `json:"dropLoginRules"`
+}
+
+// IsLoginRule: an automation rule that types the login (<USER> or <PASS>).
+func IsLoginRule(r ExpectRule) bool {
+	send := strings.TrimSpace(r.Send)
+	return !r.Hidden && (send == "<USER>" || send == "<PASS>")
 }
 
 // SessionsUnder expands a selection: sessions stay, groups contribute every
@@ -565,6 +579,9 @@ func (s *Store) BulkUpdate(ids []string, ch BulkChange) ([]string, error) {
 			return nil, errors.New("the jump host must be a saved SSH session")
 		}
 	}
+	if ch.Protocol != nil && *ch.Protocol != string(ProtoSSH) && *ch.Protocol != string(ProtoTelnet) {
+		return nil, fmt.Errorf("sessions can only be switched to SSH or telnet, not %q", *ch.Protocol)
+	}
 	if ch.Port != nil && (*ch.Port < 1 || *ch.Port > 65535) {
 		return nil, fmt.Errorf("invalid port %d", *ch.Port)
 	}
@@ -647,6 +664,27 @@ func (s *Store) BulkUpdate(ids []string, ch BulkChange) ([]string, error) {
 		}
 		if len(ch.AddClusters) > 0 || len(ch.RemoveClusters) > 0 {
 			ss.Clusters = editClusters(ss.Clusters, ch.AddClusters, ch.RemoveClusters)
+		}
+		if to := ch.Protocol; to != nil && (ss.Protocol == ProtoSSH || ss.Protocol == ProtoTelnet) && Protocol(*to) != ss.Protocol {
+			from := ss.Protocol
+			ss.Protocol = Protocol(*to)
+			if ss.Port == 0 || ss.Port == DefaultPort(from) {
+				ss.Port = DefaultPort(ss.Protocol)
+			}
+			if ss.Protocol == ProtoSSH {
+				if ss.Algorithms == "" {
+					ss.Algorithms = Inherit // the group's, else Secure
+				}
+				if ch.DropLoginRules {
+					kept := ss.Expect[:0]
+					for _, r := range ss.Expect {
+						if !IsLoginRule(r) {
+							kept = append(kept, r)
+						}
+					}
+					ss.Expect = kept
+				}
+			}
 		}
 		if ss.Protocol == ProtoSSH || ss.Protocol == ProtoTelnet {
 			if ch.Port != nil {

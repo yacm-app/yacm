@@ -44,6 +44,29 @@ export async function editMany(ids) {
   const jump = sessionPicker({ value: 'inherit', nodes: () => state.nodes.filter(n => n.session?.protocol === 'ssh'), specials: [['', 'Connect directly'], ['inherit', 'From group']], label: 'Jump host' });
   const algo = sel([['inherit', 'From group'], ['secure', 'Secure'], ['compatible', 'Compatible with older devices'], ['legacy', 'Legacy']], 'compatible');
   const port = h('input', { type: 'number', min: 1, max: 65535, placeholder: '22' });
+  // Connection type: SSH and telnet sessions switch, serial ones stay.
+  const sessions = sessionIds.map(id => state.byId.get(id)).filter(n => n?.session);
+  const switchable = sessions.filter(n => ['ssh', 'telnet'].includes(n.session.protocol));
+  const isLogin = r => !r.hidden && ['<USER>', '<PASS>'].includes((r.send || '').trim());
+  const proto = sel([['ssh', 'SSH'], ['telnet', 'Telnet']], 'ssh');
+  const dropLogin = h('input', { type: 'checkbox', checked: true });
+  const protoNote = h('div', { class: 'inherit-note' });
+  const dropRow = h('label', { class: 'check', style: { marginTop: '6px' } }, dropLogin, h('span'));
+  const paintProto = () => {
+    const to = proto.value;
+    const moving = switchable.filter(n => n.session.protocol !== to);
+    const withLogin = to === 'ssh' ? moving.filter(n => (n.session.expect || []).some(isLogin)).length : 0;
+    const other = sessions.length - switchable.length;
+    const parts = [`${plural(moving.length, 'session changes', 'sessions change')} to ${to === 'ssh' ? 'SSH' : 'telnet'}; a port that was the default (${to === 'ssh' ? '23' : '22'}) becomes ${to === 'ssh' ? '22' : '23'}.`];
+    if (other) parts.push(`${plural(other, 'serial session stays', 'serial sessions stay')} as ${other === 1 ? 'it is' : 'they are'}.`);
+    if (to === 'telnet') parts.push('Telnet sends the login and everything you type in clear text, and the login goes through automation rules (Username:, Password:).');
+    if (to === 'ssh') parts.push('SSH checks the host key at the first connection and logs in itself.');
+    protoNote.textContent = parts.join(' ');
+    dropRow.hidden = !withLogin;
+    dropRow.lastChild.textContent = `Remove the automation rules that type the login (<USER>, <PASS>) from ${plural(withLogin, 'session', 'sessions')}: SSH logs in itself, and they would answer a later “Password:” prompt (enable, say).`;
+  };
+  proto.addEventListener('change', paintProto);
+  paintProto();
   let color = '';
   const colorCtl = colorPicker('', v => (color = v), { colors: COLORS, labels: COLOR_LABELS });
   const parent = sel([['', 'Top level'], ...groupsFlat().filter(g => !ids.includes(g.id)).map(g => [g.id, '  '.repeat(g.depth + 1) + g.name])], '');
@@ -76,6 +99,7 @@ export async function editMany(ids) {
     pw: row('Password', pw, { hint: 'Stored in each session separately. A credential profile is easier to change later.' }),
     jump: row('Jump host', jump, { hint: 'SSH and telnet sessions.' }),
     algo: row('SSH algorithms', algo),
+    proto: row('Connection type', h('div', {}, proto, protoNote, dropRow)),
     port: row('Port', port, { hint: 'SSH and telnet sessions.' }),
     color: row('Colour', colorCtl, { hint: 'Set on the selected groups and sessions; sessions inside a group take its colour.' }),
     parent: row('Move to group', parent),
@@ -109,6 +133,7 @@ export async function editMany(ids) {
         if (ticked('pw')) password = pw.value;
         if (ticked('jump')) { change.jumpVia = jump.value; change.clearJumpHosts = jump.value === ''; }
         if (ticked('algo')) change.algorithms = algo.value;
+        if (ticked('proto')) { change.protocol = proto.value; change.dropLoginRules = !dropRow.hidden && dropLogin.checked; }
         if (ticked('port')) { if (!+port.value) throw new Error('Enter a port number.'); change.port = +port.value; }
         if (ticked('color')) change.color = color;
         if (ticked('parent')) change.parentId = parent.value;

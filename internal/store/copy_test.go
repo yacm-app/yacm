@@ -65,3 +65,36 @@ func TestCopyNodes(t *testing.T) {
 		t.Fatal("pasted into a session")
 	}
 }
+
+func TestBulkProtocol(t *testing.T) {
+	s, _ := Open(filepath.Join(t.TempDir(), "sessions.json"))
+	login := []ExpectRule{{ID: "u", Active: true, Expect: "Username:", Send: "<USER>", Return: true}, {ID: "p", Active: true, Expect: "Password:", Send: "<PASS>", Return: true}, {ID: "e", Active: true, Expect: "#", Send: "terminal length 0", Return: true}}
+	t1, _ := s.Upsert(&Node{Name: "t1", Session: &Session{Protocol: ProtoTelnet, Host: "10.0.0.1", Expect: login}})
+	t2, _ := s.Upsert(&Node{Name: "t2", Session: &Session{Protocol: ProtoTelnet, Host: "10.0.0.2", Port: 2323}})
+	ser, _ := s.Upsert(&Node{Name: "con", Session: &Session{Protocol: ProtoSerial, Serial: &Serial{Device: "COM1"}}})
+	to := "ssh"
+	if _, err := s.BulkUpdate([]string{t1.ID, t2.ID, ser.ID}, BulkChange{Protocol: &to, DropLoginRules: true}); err != nil {
+		t.Fatal(err)
+	}
+	get := func(id string) *Session { n, _ := s.Get(id); return n.Session }
+	if a := get(t1.ID); a.Protocol != ProtoSSH || a.Port != 22 || a.Algorithms != Inherit || len(a.Expect) != 1 || a.Expect[0].ID != "e" {
+		t.Fatalf("t1 %+v", a)
+	}
+	if b := get(t2.ID); b.Protocol != ProtoSSH || b.Port != 2323 {
+		t.Fatalf("t2 kept its own port: %+v", b)
+	}
+	if c := get(ser.ID); c.Protocol != ProtoSerial {
+		t.Fatal("serial changed")
+	}
+	back := "telnet"
+	if _, err := s.BulkUpdate([]string{t1.ID}, BulkChange{Protocol: &back}); err != nil {
+		t.Fatal(err)
+	}
+	if a := get(t1.ID); a.Protocol != ProtoTelnet || a.Port != 23 {
+		t.Fatalf("back %+v", a)
+	}
+	bad := "rdp"
+	if _, err := s.BulkUpdate([]string{t1.ID}, BulkChange{Protocol: &bad}); err == nil {
+		t.Fatal("rdp accepted")
+	}
+}

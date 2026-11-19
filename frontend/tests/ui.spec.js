@@ -1386,3 +1386,25 @@ test('cut, copy and paste in the session list: sessions and groups, menus and ke
   expect(c).toEqual([['s2'], '', -1]);
   expect(errors).toEqual([]);
 });
+
+test('editing sessions together switches telnet to SSH and offers to drop the telnet login rules', async ({ page }) => {
+  const login = [{ id: 'u', active: true, expect: 'Username:', send: '<USER>', return: true }, { id: 'p', active: true, expect: 'Password:', send: '<PASS>', return: true }];
+  const nodes = [
+    { id: 't1', parentId: '', name: 'edge-1', order: 0, session: { protocol: 'telnet', host: '10.0.0.1', port: 23, expect: login } },
+    { id: 't2', parentId: '', name: 'edge-2', order: 1, session: { protocol: 'telnet', host: '10.0.0.2', port: 23 } },
+    { id: 'c1', parentId: '', name: 'console', order: 2, session: { protocol: 'serial', serial: { device: 'COM1', baud: 9600 } } },
+  ];
+  const errors = await open(page, { nodes });
+  for (const name of ['edge-1', 'edge-2', 'console']) await page.locator('#tree .row', { hasText: name }).click({ modifiers: ['Control'] });
+  await page.locator('#tree .row', { hasText: 'edge-1' }).click({ button: 'right' });
+  await page.getByText(/Edit 3 sessions together/).click();
+  const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
+  await dlg.getByText('Connection type', { exact: true }).click();
+  await expect(dlg).toContainText('2 sessions change to SSH');
+  await expect(dlg).toContainText('1 serial session stays');
+  await expect(dlg).toContainText('from 1 session: SSH logs in itself');
+  await dlg.getByRole('button', { name: 'Apply' }).click();
+  const req = (await calls(page, 'BulkUpdate')).at(-1).args[0];
+  expect(req.change).toEqual({ protocol: 'ssh', dropLoginRules: true });
+  expect(errors).toEqual([]);
+});
