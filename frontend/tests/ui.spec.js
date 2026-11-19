@@ -1408,3 +1408,20 @@ test('editing sessions together switches telnet to SSH and offers to drop the te
   expect(req.change).toEqual({ protocol: 'ssh', dropLoginRules: true });
   expect(errors).toEqual([]);
 });
+
+test('export for a colleague leaves out the logins and no passwords go with it', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree .row', { hasText: 'DC Zagreb' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Export group…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Export sessions' });
+  await dlg.getByText('Include passwords, encrypted').click();
+  await expect(dlg.getByText('Your master password', { exact: true })).toBeVisible();
+  await dlg.getByText('Leave out user names and logins').click();
+  await expect(dlg.getByText('Your master password', { exact: true })).toBeHidden();
+  await expect(dlg.getByLabel('Include passwords, encrypted')).toBeDisabled();
+  await dlg.getByRole('button', { name: 'Choose file and export' }).click();
+  await expect.poll(async () => (await calls(page, 'ExportSessions')).length).toBe(1);
+  const opts = (await calls(page, 'ExportSessions'))[0].args[1];
+  expect(opts).toEqual(expect.objectContaining({ leaveOutLogins: true, includeSecrets: false }));
+  expect(errors).toEqual([]);
+});

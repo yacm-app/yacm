@@ -265,6 +265,10 @@ func (a *App) ExportSessions(path string, opts exchange.ExportOptions) (retSum *
 	if len(nodes) == 0 {
 		return nil, errors.New("there are no sessions to export")
 	}
+	if opts.LeaveOutLogins {
+		exchange.StripLogins(nodes)
+		opts.IncludeSecrets = false
+	}
 	creds := exchange.ReferencedCredentials(nodes, a.store.Credentials())
 	var secrets map[string]string
 	if opts.IncludeSecrets {

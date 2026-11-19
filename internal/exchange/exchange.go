@@ -67,6 +67,52 @@ type ExportOptions struct {
 	Master            string `json:"master,omitempty"`
 	IncludeSettings   bool   `json:"includeSettings"`
 	IncludeKnownHosts bool   `json:"includeKnownHosts"`
+	// LeaveOutLogins writes no user names, credential profiles or key files
+	// (and no passwords): for handing sessions to a colleague, who sets
+	// their own login.
+	LeaveOutLogins bool `json:"leaveOutLogins"`
+}
+
+// StripLogins removes the logins from collected nodes: user names, links to
+// credential profiles (inheriting from a group stays), key and certificate
+// files. Sessions with their own login ask for it.
+func StripLogins(nodes []*store.Node) {
+	profile := func(id string) bool { return id != "" && id != store.Inherit }
+	for _, n := range nodes {
+		auth := map[*string]bool{}
+		if ss := n.Session; ss != nil {
+			auth[&ss.CredentialID] = true
+			for i := range ss.Jump {
+				auth[&ss.Jump[i].CredentialID] = true
+			}
+		}
+		for _, ref := range *credRefs(n) {
+			if profile(*ref) && !auth[ref] {
+				*ref = "" // group defaults, proxies
+			}
+		}
+		ss := n.Session
+		if ss == nil {
+			continue
+		}
+		if profile(ss.CredentialID) {
+			ss.CredentialID = ""
+		}
+		if ss.CredentialID == "" && (ss.Auth == store.AuthPublicKey || ss.User != "") {
+			ss.Auth = store.AuthAsk
+		}
+		ss.User, ss.KeyPath, ss.CertPath = "", "", ""
+		for i := range ss.Jump {
+			j := &ss.Jump[i]
+			if profile(j.CredentialID) {
+				j.CredentialID = ""
+			}
+			if j.CredentialID == "" && (j.Auth == store.AuthPublicKey || j.User != "") {
+				j.Auth = store.AuthAsk
+			}
+			j.User, j.KeyPath = "", ""
+		}
+	}
 }
 
 // Collect returns copies of the selected subtrees. Selected nodes become

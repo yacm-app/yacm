@@ -384,6 +384,9 @@ delete the folder (and a data folder you chose yourself, if any).
 - **Export and import** in YACM's own `.yacm` format, for backups, moving to
   another computer or sharing with colleagues; passwords only under a separate
   export password ([format](import-export.md#the-yacm-export-format)).
+  *Leave out user names and logins* writes no user names, credential
+  profiles, key files or passwords: for handing sessions to a colleague, who
+  sets their own login afterwards.
 - **Portable use**: an empty file named `yacm.portable` next to the program
   keeps everything in a `yacm-data` folder beside it (USB stick).
   `YACM_DATA_DIR` sets the folder too; both take precedence over the setting.

@@ -41,6 +41,13 @@ export function exportDialog(nodeIds = null, after) {
   withPw.addEventListener('change', () => { pwBox.hidden = !withPw.checked; if (withPw.checked) master.focus(); });
   const hosts = h('input', { type: 'checkbox', checked: true });
   const settings = h('input', { type: 'checkbox' });
+  // For a colleague: no user names, profiles or key files, and so no
+  // passwords either; they set their own login after importing.
+  const noLogins = h('input', { type: 'checkbox' });
+  noLogins.addEventListener('change', () => {
+    if (noLogins.checked) { withPw.checked = false; pwBox.hidden = true; }
+    withPw.disabled = noLogins.checked || !state.vault.unlocked;
+  });
 
   openDialog({
     title: 'Export sessions',
@@ -48,6 +55,7 @@ export function exportDialog(nodeIds = null, after) {
     medium: true,
     body: h('div', {},
       ids.length ? h('div', { class: 'field' }, h('span', { text: 'What to export' }), scopeSeg) : null,
+      check('Leave out user names and logins', noLogins, 'For handing sessions to a colleague: no user names, credential profiles, key files or passwords. They set their own login afterwards (Edit … sessions together, or a profile on the group).'),
       check('Include passwords, encrypted', withPw, state.vault.unlocked ? 'Saved passwords, key passphrases, hidden automation values and the passwords of the credential profiles the sessions use.' : 'Unlock the vault to export passwords.'),
       pwBox,
       check('Include trusted host keys', hosts, 'Public keys only, so the other computer recognises your devices without asking again.'),
@@ -66,10 +74,10 @@ export function exportDialog(nodeIds = null, after) {
         const sum = await api.ExportSessions(path, {
           nodeIds: scope === 'node' ? ids : [],
           includeSecrets: withPw.checked, password: withPw.checked ? pw.value : '', master: withPw.checked ? master.value : '',
-          includeSettings: settings.checked, includeKnownHosts: hosts.checked,
+          includeSettings: settings.checked, includeKnownHosts: hosts.checked, leaveOutLogins: noLogins.checked,
         });
         const extra = [sum.secrets ? plural(sum.secrets, 'password', 'passwords') : null, sum.knownHosts ? plural(sum.knownHosts, 'host key', 'host keys') : null].filter(Boolean);
-        toast(`Exported ${plural(sum.sessions, 'session', 'sessions')}${extra.length ? ' with ' + extra.join(' and ') : ''} to ${sum.path.split(/[\\/]/).pop()}.`);
+        toast(`Exported ${plural(sum.sessions, 'session', 'sessions')}${extra.length ? ' with ' + extra.join(' and ') : ''}${noLogins.checked ? ', without logins,' : ''} to ${sum.path.split(/[\\/]/).pop()}.`);
         after && after();
       } },
     ],

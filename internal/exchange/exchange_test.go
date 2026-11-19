@@ -146,7 +146,7 @@ func TestNoPasswordSkipsSecrets(t *testing.T) {
 }
 
 func TestProfilesInheritanceAndJumpsSurviveExport(t *testing.T) {
-	cred := &store.Credential{ID: "cred-ad", Name: "AD", User: "ivan", Auth: store.AuthPassword}
+	cred := &store.Credential{ID: "cred-ad", Name: "AD", User: "jsmith", Auth: store.AuthPassword}
 	g := &store.Node{ID: "g", IsGroup: true, Name: "DC", Color: "red", Defaults: &store.GroupDefaults{CredentialID: "cred-ad", JumpVia: "bastion"}}
 	bastion := &store.Node{ID: "bastion", Name: "bastion", Session: &store.Session{Protocol: store.ProtoSSH, Host: "192.0.2.1", Port: 22, CredentialID: "cred-ad"}}
 	sw := &store.Node{ID: "sw", ParentID: "g", Name: "sw1", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1", Port: 22, CredentialID: store.Inherit, JumpVia: store.Inherit}}
@@ -228,7 +228,7 @@ func TestImportFromSomeoneElse(t *testing.T) {
 	existing := map[string]*store.Node{
 		"victim": {ID: "victim", Name: "Prod", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1", Port: 22}},
 	}
-	creds := map[string]*store.Credential{"ad": {ID: "ad", Name: "AD account", User: "ivan"}}
+	creds := map[string]*store.Credential{"ad": {ID: "ad", Name: "AD account", User: "jsmith"}}
 	data := `{"format":"` + Format + `","version":1,"nodes":[
 	  {"id":"victim/jump/0","name":"alias","session":{"protocol":"ssh","host":"203.0.113.9","port":22}},
 	  {"id":"n2","name":"borrow","session":{"protocol":"ssh","host":"203.0.113.9","port":22,"credentialId":"ad",
@@ -368,7 +368,7 @@ func TestReplaceWithOtherJumpClearsSecrets(t *testing.T) {
 // A group in a file that names one of your profiles keeps the reference only
 // when the file's profile is yours (same name and user).
 func TestImportedGroupCannotBorrowAProfile(t *testing.T) {
-	creds := map[string]*store.Credential{"ad": {ID: "ad", Name: "AD account", User: "ivan"}}
+	creds := map[string]*store.Credential{"ad": {ID: "ad", Name: "AD account", User: "jsmith"}}
 	data := `{"format":"` + Format + `","version":2,"nodes":[
 	  {"id":"g1","isGroup":true,"name":"G","defaults":{"credentialId":"ad"}},
 	  {"id":"s1","parentId":"g1","name":"x","session":{"protocol":"ssh","host":"203.0.113.9","credentialId":"inherit"}}],
@@ -382,5 +382,30 @@ func TestImportedGroupCannotBorrowAProfile(t *testing.T) {
 		if n.IsGroup && n.Defaults != nil && n.Defaults.CredentialID == "ad" {
 			t.Fatal("the group kept a reference to your profile")
 		}
+	}
+}
+
+func TestStripLogins(t *testing.T) {
+	g := &store.Node{ID: "g", IsGroup: true, Name: "Site", Defaults: &store.GroupDefaults{CredentialID: "c1", Proxy: &store.Proxy{Type: "socks5", Host: "p", Port: 1080, CredentialID: "c2"}}}
+	a := &store.Node{ID: "a", ParentID: "g", Name: "a", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1", User: "jsmith", Auth: store.AuthPublicKey, KeyPath: "/home/jsmith/.ssh/id_ed25519",
+		Jump:   []store.JumpHost{{Host: "j", Port: 22, User: "jsmith", Auth: store.AuthPassword}, {Host: "k", Port: 22, CredentialID: "c1"}},
+		Expect: []store.ExpectRule{{ID: "e", Active: true, Expect: "Username:", Send: "<USER>"}}}}
+	b := &store.Node{ID: "b", ParentID: "g", Name: "b", Session: &store.Session{Protocol: store.ProtoTelnet, Host: "10.0.0.2", CredentialID: store.Inherit}}
+	c := &store.Node{ID: "c", ParentID: "g", Name: "c", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.3", CredentialID: "c1"}}
+	nodes := []*store.Node{g, a, b, c}
+	StripLogins(nodes)
+	sa := a.Session
+	if sa.User != "" || sa.KeyPath != "" || sa.Auth != store.AuthAsk || sa.Jump[0].User != "" || sa.Jump[0].Auth != store.AuthAsk || sa.Jump[1].CredentialID != "" {
+		t.Fatalf("a %+v", sa)
+	}
+	if sa.Expect[0].Send != "<USER>" {
+		t.Fatal("automation template changed")
+	}
+	if b.Session.CredentialID != store.Inherit || c.Session.CredentialID != "" || g.Defaults.CredentialID != "" || g.Defaults.Proxy.CredentialID != "" {
+		t.Fatal("profile links left")
+	}
+	all := []*store.Credential{{ID: "c1", Name: "TACACS", User: "jsmith"}, {ID: "c2", Name: "proxy"}}
+	if got := ReferencedCredentials(nodes, all); len(got) != 0 {
+		t.Fatalf("profiles still exported: %v", got)
 	}
 }

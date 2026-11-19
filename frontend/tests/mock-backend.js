@@ -111,6 +111,8 @@
     LocalAddresses: () => [{ ip: '10.1.1.5', interface: 'eth0' }],
     ChooseSaveAs: (title, dir, name) => `/home/ivan/Desktop/${name}`,
     SessionCommandToFile: () => 'x-cmd',
+    ChooseSaveFile: (title, name) => `/home/user/${name}`,
+    ExportSessions: path => ({ path, sessions: 2, groups: 1, secrets: 0, knownHosts: 0, settings: false }),
     SessionAddresses: ids => ids.map(id => nodes.find(n => n.id === id)).filter(n => n?.session).map(n => (n.session.protocol === 'ssh' && n.session.user ? `${n.session.user}@${n.session.host}` : n.session.host)),
     TunnelStatuses: () => cfg.tunnels || [],
     TunnelStop: () => null,

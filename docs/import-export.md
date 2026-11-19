@@ -65,7 +65,11 @@ user name for devices without one.
 
 Export with the import/export button next to + in the session list
 (**Export sessions…**), or right-click a group, a session or a selection and
-choose **Export…**. A `.yacm` file is plain UTF-8 JSON:
+choose **Export…**. **Leave out user names and logins** (for handing
+sessions to a colleague) writes no user names, credential profiles, key and
+certificate files or passwords; sessions with their own login ask for it, and
+automation rules keep `<USER>` and `<PASS>` as placeholders. A `.yacm` file is
+plain UTF-8 JSON:
 
 | Field | Content |
 |---|---|
