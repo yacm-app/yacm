@@ -7,7 +7,7 @@
 import { api, on, state } from './api.js';
 import { h, toast, errMsg, openDialog, field, check, seg, confirmDialog } from './ui.js';
 import { fmtBytes } from './files.js';
-import { tabById, terminalTabs, activate, activeTerminal } from './terms.js';
+import { tabById, terminalTabs, activate, activeTerminal, tabName } from './terms.js';
 import { TYPE, tunnelText } from './tunnels.js';
 
 const LS = {
@@ -294,14 +294,14 @@ export async function openServers({ tabId } = {}) {
       ipSel.value = route.address;
       // Say which address the session's device reaches, in the list itself.
       const o = [...ipSel.options].find(x => x.value === route.address);
-      if (o && tab) o.text = `${route.address} (${tab.node.name} reaches it)`;
+      if (o && tab) o.text = `${route.address} (${tabName(tab)} reaches it)`;
     }
   };
   fillAddresses();
   const target = h('select', { 'aria-label': 'Session to type into' });
   const fillTargets = () => {
     const list = connected();
-    target.replaceChildren(...(list.length ? list.map(t => h('option', { value: t.id, text: t.node.name })) : [h('option', { value: '', text: 'No connected session' })]));
+    target.replaceChildren(...(list.length ? list.map(t => h('option', { value: t.id, text: tabName(t) })) : [h('option', { value: '', text: 'No connected session' })]));
     target.value = tab?.id || '';
     target.disabled = !list.length;
   };
@@ -344,17 +344,17 @@ export async function openServers({ tabId } = {}) {
     if (!st?.running) notes.push(`Start the ${srv === 'scp' ? 'SCP / SFTP' : srv.toUpperCase()} server above first.`);
     notes.push(...deviceNotes(platform, kindSel, port));
     if (srv === 'scp' && st?.running) notes.push(`The device asks for the password: ${st.password}`);
-    if (route?.jump && !tun) notes.push(`${tab.node.name} is behind the jump host ${route.jump} and cannot reach this computer directly. Open a tunnel through the jump host (HTTP, SCP or SFTP), or copy with Send file / Get file instead.`);
-    if (direct && !tun && st?.running && kindSel !== 'tftp') notes.push(`If ${tab.node.name} cannot connect to this computer (VPN, NAT, a firewall: “Connection refused” or a timeout), open a tunnel through this session: the command then copies from 127.0.0.1 on ${tab.node.name}. Works with Linux servers; Cisco IOS and most network devices do not offer such tunnels.`);
+    if (route?.jump && !tun) notes.push(`${tabName(tab)} is behind the jump host ${route.jump} and cannot reach this computer directly. Open a tunnel through the jump host (HTTP, SCP or SFTP), or copy with Send file / Get file instead.`);
+    if (direct && !tun && st?.running && kindSel !== 'tftp') notes.push(`If ${tabName(tab)} cannot connect to this computer (VPN, NAT, a firewall: “Connection refused” or a timeout), open a tunnel through this session: the command then copies from 127.0.0.1 on ${tabName(tab)}. Works with Linux servers; Cisco IOS and most network devices do not offer such tunnels.`);
     if (tun) notes.push(tun.reachable ? `Through the tunnel on ${tun.via}: the device copies from ${tun.address}:${tun.port}.` : `The tunnel on ${tun.via} is open, but the device probably cannot reach it: ${tun.note || 'its SSH server does not allow tunnels (AllowTcpForwarding).'}`);
     helperNote.textContent = notes.join(' ');
     tunBtn.hidden = !(route?.jump || direct) || kindSel === 'tftp' || !st?.running || !!tun;
-    tunBtn.textContent = route?.jump ? `Open a tunnel through ${route.jump}` : `Open a tunnel through ${tab?.node.name || 'this session'}`;
+    tunBtn.textContent = route?.jump ? `Open a tunnel through ${route.jump}` : `Open a tunnel through ${tab ? tabName(tab) : 'this session'}`;
     typeBtn.disabled = !tab || tab.state !== 'connected';
-    typeBtn.textContent = tab ? `Type into ${tab.node.name}` : 'Type into the session';
+    typeBtn.textContent = tab ? `Type into ${tabName(tab)}` : 'Type into the session';
     const ssh = tab?.node.session?.protocol === 'ssh' && tab.state === 'connected';
     pickFile.disabled = dirSel === 'put' && !ssh;
-    pickFile.title = dirSel === 'get' ? 'Pick the file on this computer' : ssh ? `Pick the file on ${tab.node.name}` : 'The files of the device can be listed over SSH only: type the name';
+    pickFile.title = dirSel === 'get' ? 'Pick the file on this computer' : ssh ? `Pick the file on ${tabName(tab)}` : 'The files of the device can be listed over SSH only: type the name';
   };
   const helperNote = h('p', { class: 'hint' });
   const typeBtn = h('button', { type: 'button', class: 'btn small primary', text: 'Type into the session', title: 'Types the command into the session without pressing Enter', on: { click: () => {
@@ -405,7 +405,7 @@ export async function openServers({ tabId } = {}) {
     tunList.replaceChildren(...(found.length ? found.map(({ t, s }) => h('div', { class: `tun-row ${s.state}` },
       h('span', { class: `led ${s.state === 'running' ? 'connected' : 'error'}` }),
       h('div', { class: 'what' },
-        h('div', {}, h('b', { text: t.node.name }), ' · ', h('span', { text: s.name || TYPE[s.type] || 'Tunnel' }), ' ', h('span', { class: 'mono', text: tunnelText(s) })),
+        h('div', {}, h('b', { text: tabName(t) }), ' · ', h('span', { text: s.name || TYPE[s.type] || 'Tunnel' }), ' ', h('span', { class: 'mono', text: tunnelText(s) })),
         s.error ? h('div', { class: 'err', text: s.error }) : h('div', { class: 'hint', text: `${s.conns} open, ${s.total} so far · ↓ ${fmtBytes(s.in)} ↑ ${fmtBytes(s.out)}${s.last ? ` · last ${s.last}` : ''}` })),
       h('button', { class: 'btn small', text: 'Go to tab', on: { click: () => { dlg.close(); activate(t.id); } } }),
       s.state === 'running' ? h('button', { class: 'btn small', text: 'Stop', on: { click: () => api.TunnelStop(t.id, s.id).then(paintTunnels).catch(e => toast(errMsg(e), 'error')) } }) : null))

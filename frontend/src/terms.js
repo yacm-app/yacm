@@ -76,6 +76,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function nodeNow(t) { return state.byId.get(t.node.id) || t.node; }
 
+// tabName is a tab's name on screen: the session's name, with (2), (3) …
+// when the same session (or quick connect address) is open more than once.
+/** @param {{ node: { name: string }, instance?: number }} t */
+export function tabName(t) { return t.instance > 1 ? `${t.node.name} (${t.instance})` : t.node.name; }
+
+// instanceOf gives a new tab of node the lowest number its other open tabs
+// do not have; the first one has none (1).
+function instanceOf(node) {
+  const key = n => (n.id === 'quick' ? `quick|${n.name}` : n.id);
+  const used = new Set();
+  for (const t of tabs.values()) if (isTerm(t) && key(t.node) === key(node)) used.add(t.instance || 1);
+  let i = 1;
+  while (used.has(i)) i++;
+  return i;
+}
+
 // Tabs come in kinds: "terminal" (this class) and others such as the Files
 // browser (files.js), later remote desktops. Every kind has id, node, kind,
 // state, el, label, alert, waiting and the methods focus(), fitAndResize(),
@@ -97,6 +113,11 @@ class Tab {
     /** @type {Record<string, number>} */ this.alertLast = {};
     /** @type {any[]} */ this.tunnels = []; // tunnel statuses (tab:tunnels)
     /** @type {string} */ this.quick = ''; // quick connect spec
+    this.instance = 1; // (2), (3) … for the same session open more than once
+    this.activity = false; // new output while the tab was not on screen
+    this.noActivity = false; // not marked for this tab (from its menu)
+    this.connectedAt = 0;
+    this.lastInput = 0; // anything sent to the device: its echo is not news
     const s = state.settings;
     const ss = node.session || {};
     this.baseFont = ss.fontSize || s.fontSize || 14;
@@ -220,6 +241,7 @@ class Tab {
     const text = this.decoder.decode(bytes, { stream: true });
     this.term.write(this.hl ? this.hl.process(text) : text);
     if (this.alertRules.length) this.scanAlerts(text);
+    if (!this.activity && isNews(this, text)) { this.activity = true; renderTabbar(); }
   }
 
   // scanAlerts checks finished lines against the alert rules while nobody
@@ -344,7 +366,7 @@ class Tab {
       const ok = await confirmDialog({
         title: `Paste ${multi} lines?`,
         message: h('div', {},
-          h('p', { text: (targets > 1 ? `Each line will run on ${targets} sessions.` : `Each line will run on ${this.node.name}.`) + (delay ? ` Lines are sent ${delay} ms apart.` : '') }),
+          h('p', { text: (targets > 1 ? `Each line will run on ${targets} sessions.` : `Each line will run on ${tabName(this)}.`) + (delay ? ` Lines are sent ${delay} ms apart.` : '') }),
           h('pre', { class: 'hostkey', style: { maxHeight: '220px', overflow: 'auto', whiteSpace: 'pre-wrap' }, text: lines.slice(0, 40).join('\n') + (lines.length > 40 ? `\n… ${lines.length - 40} more` : '') })),
         ok: 'Paste',
       });
@@ -386,8 +408,10 @@ class Tab {
       return;
     }
     if (broadcast.on && broadcast.ids.has(this.id)) {
+      noteInput([...broadcast.ids]);
       api.Broadcast([...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected'), d);
     } else {
+      this.lastInput = Date.now();
       api.Write(this.id, d).catch(() => {});
     }
   }
@@ -416,7 +440,7 @@ class Tab {
     const msg = h('span', { class: 'msg' });
     const tick = () => {
       const s = Math.max(0, Math.floor((Date.now() - w.since) / 1000));
-      msg.textContent = `Waiting for ${this.node.name} to answer again… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (up to ${Math.round(w.max / 60)} min), then it reconnects.`;
+      msg.textContent = `Waiting for ${tabName(this)} to answer again… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (up to ${Math.round(w.max / 60)} min), then it reconnects.`;
     };
     tick();
     const o = h('div', { class: 'term-overlay waiting' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), msg,
@@ -480,7 +504,7 @@ export function paintPaneLabel(t) {
   t.label.replaceChildren(...[
     h('span', { class: `led ${t.waiting ? 'waiting' : t.state}` }),
     t.kind === 'terminal' ? null : icon(t.kind, 'label-kind'),
-    h('span', { class: 'name', text: t.kind === 'files' ? `${t.node.name}: files` : t.node.name }),
+    h('span', { class: 'name', text: t.kind === 'files' ? `${t.node.name}: files` : tabName(t) }),
     h('button', { title: 'Remove from this pane', 'aria-label': 'Remove from this pane', text: '×', on: { click: e => { e.stopPropagation(); unpane(t.id); } } }),
   ].filter(Boolean));
 }
@@ -546,7 +570,7 @@ export function initTerms() {
     t.state = st.state;
     if (st.summary !== undefined && st.summary !== '') t.summary = st.summary;
     t.message = st.message || '';
-    if (st.state === 'connected') { t.hideOverlay(); t.expect = null; }
+    if (st.state === 'connected') { t.hideOverlay(); t.expect = null; if (t.connectedAt === 0 || st.summary) t.connectedAt = Date.now(); }
     if (st.state === 'error') { t.log(`\x1b[0;31m${st.message}`); t.showOverlay('error', st.message); }
     if (st.state === 'closed') { const m = st.message || 'connection closed'; t.log(m); t.showOverlay('', `${m[0].toUpperCase()}${m.slice(1)}. Press Enter to reconnect.`); }
     t.paintLabel();
@@ -557,6 +581,7 @@ export function initTerms() {
     const t = tabs.get(tabId);
     if (!t) return;
     t.expect = event;
+    t.lastInput = Date.now();
     if (event.state === 'timeout') t.log(`automation: timed out waiting for “${event.pattern}”`);
     if (event.state === 'stopped' && event.index < event.total) t.log('automation stopped');
     if (t.id === active) renderStatus();
@@ -573,7 +598,7 @@ export function initTerms() {
       t.hideOverlay();
       if (st.state === 'up') {
         t.log(`${t.node.name} answers again`);
-        toast(`${t.node.name} is back. Reconnecting.`);
+        toast(`${tabName(t)} is back. Reconnecting.`);
         reconnect(t.id);
       } else if (st.state === 'stopped') {
         t.showOverlay('', 'Stopped waiting. Press Enter to reconnect.');
@@ -606,7 +631,7 @@ export function initTerms() {
     const t = tabs.get(tabId);
     const ok = await confirmDialog({
       title: 'Run local commands?',
-      message: h('div', {}, h('p', { text: `${t?.node.name || 'The session'} disconnected. These commands are set to run afterwards:` }),
+      message: h('div', {}, h('p', { text: `${t ? tabName(t) : 'The session'} disconnected. These commands are set to run afterwards:` }),
         h('pre', { class: 'hostkey', text: commands.join('\n') })),
       ok: 'Run', cancel: 'Skip',
     });
@@ -619,7 +644,9 @@ export function initTerms() {
     for (const id of view.panes) { const t = tabs.get(id); if (t?.alert) { t.alert = null; changed = true; } }
     if (changed) renderTabbar();
   });
+  on('tab:typed', ({ tabId }) => noteInput([tabId]));
   document.addEventListener('keydown', globalKeys, true);
+  document.getElementById('tabbar')?.addEventListener('wheel', wheelTabbar, { passive: false });
   /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('#layout-tools .layout-btn')).forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
 }
 
@@ -631,6 +658,7 @@ function fitVisible() {
 // "after" (Clone session).
 function addTab(id, node, after, custom) {
   const t = custom || new Tab(id, node);
+  if (!custom) t.instance = instanceOf(node);
   tabs.set(id, t);
   const at = after ? order.indexOf(after) : -1;
   if (at >= 0) order.splice(at + 1, 0, id); else order.push(id);
@@ -881,6 +909,24 @@ function finishClose() {
 
 // ---- output alerts ------------------------------------------------------------
 
+// isNews: output in a tab that is not on screen, worth marking its name
+// (Settings > Appearance). Not: the first seconds after connecting (banner,
+// login), the device's echo of what was sent to it (typing to many, saved
+// commands, automation, anti-idle), and output with no text.
+function isNews(t, text) {
+  if (t.noActivity || state.settings.tabActivity === 'off' || t.state !== 'connected' || view.panes.includes(t.id)) return false;
+  const now = Date.now();
+  if (now - t.connectedAt < 3000 || now - t.lastInput < 1500) return false;
+  return /\S/.test(stripAnsi(text));
+}
+
+// noteInput: these tabs were just sent something.
+/** @param {string[]} ids */
+export function noteInput(ids) {
+  const now = Date.now();
+  for (const id of ids) { const t = tabs.get(id); if (t) t.lastInput = now; }
+}
+
 // isWatched: the session is on screen and YACM has the focus.
 function isWatched(t) {
   return document.hasFocus() && !document.hidden && view.panes.includes(t.id);
@@ -930,7 +976,7 @@ function renderAlertBox() {
   const close = h('button', { class: 'close', text: '×', title: 'Close', 'aria-label': 'Close the alert', on: { click: closeAlertBox } });
   const row = (a, last) => h('div', { class: 'alert-toast' },
     h('span', { class: 'alert-dot', style: { background: alertColor(a.rule.color) } }),
-    h('span', { class: 'alert-text' }, h('b', { text: a.t.node.name }), ': ', a.line.length > 160 ? a.line.slice(0, 159) + '…' : a.line),
+    h('span', { class: 'alert-text' }, h('b', { text: tabName(a.t) }), ': ', a.line.length > 160 ? a.line.slice(0, 159) + '…' : a.line),
     h('button', { class: 'btn small', text: 'Show', on: { click: () => show(a) } }),
     ...(last ? [off, close] : []));
   if (list.length === 1) { el.replaceChildren(row(list[0], true)); return; }
@@ -958,9 +1004,9 @@ function alertOffMenu(e, list) {
     } catch (err) { toast(errMsg(err), 'error'); }
   };
   contextMenu(r.left, r.bottom + 2, [
-    { label: tabsIn.length === 1 ? `For ${tabsIn[0].node.name} until its tab closes` : `For these ${tabsIn.length} sessions until their tabs close`, action: () => {
+    { label: tabsIn.length === 1 ? `For ${tabName(tabsIn[0])} until its tab closes` : `For these ${tabsIn.length} sessions until their tabs close`, action: () => {
       for (const t of tabsIn) { t.alertsMuted = true; t.alertRules = []; }
-      done(tabsIn.length === 1 ? `No more alerts from ${tabsIn[0].node.name} while its tab is open.` : `No more alerts from these ${tabsIn.length} sessions while their tabs are open.`);
+      done(tabsIn.length === 1 ? `No more alerts from ${tabName(tabsIn[0])} while its tab is open.` : `No more alerts from these ${tabsIn.length} sessions while their tabs are open.`);
     } },
     { label: ruleIds.size === 1 ? 'For messages like this one' : 'For messages like these', title: 'Takes Alert off the rules in Settings > Highlighting; the colours stay',
       action: () => save({ highlightRules: (state.settings.highlightRules || []).map(x => (ruleIds.has(x.id) ? { ...x, alert: false } : x)) },
@@ -1035,7 +1081,7 @@ function moveItems(id) {
   return PANE_NAMES[view.layout].map((name, i) => {
     const other = view.panes[i] && view.panes[i] !== id ? tabs.get(view.panes[i]) : null;
     return {
-      label: from >= 0 && other ? `Swap with ${other.node.name} (${name} pane)` : `Move to the ${name} pane`,
+      label: from >= 0 && other ? `Swap with ${other.kind === 'terminal' ? tabName(other) : other.node.name} (${name} pane)` : `Move to the ${name} pane`,
       key: i === view.panes.indexOf(id) || from < 0 || NEIGHBOURS[view.layout]?.[from] === undefined ? undefined : arrowKeyFor(from, i),
       disabled: i === from,
       action: () => placeInPane(id, i),
@@ -1190,7 +1236,7 @@ export function commandTargets() {
     const ids = [...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected');
     return { ids, label: plural(ids.length, 'session', 'sessions'), macros: t.node.session?.macros || [], library: !!t.node.library };
   }
-  return { ids: [t.id], label: t.node.name, macros: t.node.session?.macros || [], nodeId: t.node.id, library: !!t.node.library };
+  return { ids: [t.id], label: tabName(t), macros: t.node.session?.macros || [], nodeId: t.node.id, library: !!t.node.library };
 }
 
 export function pasteDelayFor(id) { return tabs.get(id)?.pasteDelay() || 0; }
@@ -1209,23 +1255,27 @@ async function renamed() {
   window.dispatchEvent(new Event('yacm:tree'));
 }
 
+let shownActive = ''; // the active tab the bar last scrolled to
+
 function renderTabbar() {
   rememberTabs();
   const bar = document.getElementById('tabbar');
+  const scrolled = bar.scrollLeft;
   bar.replaceChildren();
   const split = view.layout !== '1';
   for (const id of order) {
     const t = tabs.get(id);
     const proto = t.node.session?.protocol || 'ssh';
     const color = colorOf(nodeNow(t));
+    if (view.panes.includes(id)) t.activity = false;
     const el = h('div', {
-      class: `tab${id === active ? ' active' : ''}${split && view.panes.includes(id) ? ' visible' : ''}${broadcast.on && broadcast.ids.has(id) ? ' in-broadcast' : ''}`,
-      role: 'tab', 'aria-selected': String(id === active), title: `${t.node.name} (${t.waiting ? 'waiting for the device' : t.state})`,
+      class: `tab${id === active ? ' active' : ''}${t.activity ? ` news news-${state.settings.tabActivity || 'red'}` : ''}${split && view.panes.includes(id) ? ' visible' : ''}${broadcast.on && broadcast.ids.has(id) ? ' in-broadcast' : ''}`,
+      role: 'tab', 'aria-selected': String(id === active), title: `${tabName(t)} (${t.waiting ? 'waiting for the device' : t.state})`,
       style: { '--proto': `var(--${proto})` },
     },
       h('span', { class: `led ${t.waiting ? 'waiting' : t.state}` }),
       isTerm(t) ? portGlyph(proto) : icon(t.kind, `port ${t.kind}`),
-      h('span', { class: 'title', text: t.node.name }),
+      h('span', { class: 'title', text: t.kind === 'terminal' ? tabName(t) : t.node.name }),
       t.alert ? h('span', { class: 'alert-dot', title: `Alert: ${t.alert.line}`, style: { background: alertColor(t.alert.color) } }) : null,
       h('button', { class: 'close', title: `Close tab (${KEY.close})`, 'aria-label': 'Close tab', text: '×', on: { click: e => { e.stopPropagation(); requestClose(id); } } }));
     if (color) el.dataset.color = color;
@@ -1280,13 +1330,32 @@ function renderTabbar() {
           ? { label: 'Show next to the current tab', action: () => { setLayout('2v'); activate(id); }, disabled: order.length < 2 || id === active }
           : { label: panes > 1 && view.panes.includes(id) ? 'Remove from split view' : 'Show in the selected pane', action: () => (view.panes.includes(id) ? unpane(id) : activate(id)) },
         ...moveItems(id),
+        state.settings.tabActivity === 'off' ? null : { label: t.noActivity ? 'Mark new output in this tab' : 'Do not mark new output in this tab', action: () => { t.noActivity = !t.noActivity; t.activity = false; renderTabbar(); }, title: 'The tab name turns red when output arrives while the tab is not on screen (Settings > Appearance)' },
         '-',
         { label: 'Close other tabs', action: () => order.filter(x => x !== id).forEach(closeTab) },
         { label: 'Close tab', key: KEY.close, action: () => requestClose(id) },
-      ]);
+      ].filter(Boolean));
     });
     bar.append(el);
   }
+  // Keep the bar where it was; a tab that just became active is moved into
+  // view (Ctrl+Tab, Go to session, a new session).
+  bar.scrollLeft = scrolled;
+  if (active !== shownActive) {
+    shownActive = active;
+    const el = bar.children[order.indexOf(active)];
+    if (el) el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }
+}
+
+// The mouse wheel over the tab bar moves it left and right (a touchpad's
+// sideways swipe already does).
+function wheelTabbar(e) {
+  if (e.ctrlKey || e.metaKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  const bar = /** @type {HTMLElement} */ (e.currentTarget);
+  if (bar.scrollWidth <= bar.clientWidth) return;
+  e.preventDefault();
+  bar.scrollLeft += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
 }
 
 // fileItems are the file transfer entries of a terminal tab (menus, the
@@ -1337,7 +1406,7 @@ async function requestClose(id) {
     return;
   }
   if (t.state === 'connected') {
-    const ok = await confirmDialog({ title: `Disconnect ${t.node.name}?`, message: 'The session is still connected.', ok: 'Disconnect and close', danger: true });
+    const ok = await confirmDialog({ title: `Disconnect ${tabName(t)}?`, message: 'The session is still connected.', ok: 'Disconnect and close', danger: true });
     if (!ok) return;
   }
   closeTab(id);
@@ -1532,12 +1601,12 @@ function renderBroadcast() {
     const t = tabs.get(id);
     const cb = h('input', { type: 'checkbox', checked: broadcast.ids.has(id) });
     cb.addEventListener('change', () => { cb.checked ? broadcast.ids.add(id) : broadcast.ids.delete(id); syncAll(); renderTabbar(); back(); });
-    box.append(h('label', { title: t.state === 'connected' ? t.node.name : `${t.node.name} (${t.state}): receives nothing until it is connected` }, cb, t.node.name));
+    box.append(h('label', { title: t.state === 'connected' ? tabName(t) : `${tabName(t)} (${t.state}): receives nothing until it is connected` }, cb, tabName(t)));
   }
   syncAll();
   const line = h('input', { class: 'inline-input', placeholder: 'Send one command to the checked sessions', spellcheck: false,
     title: 'Enter sends the command. While the field is empty, Space, Enter and Ctrl+C go to the sessions too, so --More-- pages on.' });
-  const send = d => api.Broadcast([...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected'), d);
+  const send = d => { noteInput([...broadcast.ids]); return api.Broadcast([...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected'), d); };
   line.addEventListener('keydown', e => {
     if (e.isComposing) return;
     if (e.key === 'Enter') {

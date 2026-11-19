@@ -113,9 +113,11 @@ export async function openSettings(onApply, startTab) {
   theme.addEventListener('click', () => tPrev.update());
   const tText = termPicker(st.termText || 'theme', v => { st.termText = v; tPrev.update(); }, { kind: 'text', allowInherit: false });
   const tBg = termPicker(st.termBackground || 'theme', v => { st.termBackground = v; tPrev.update(); }, { kind: 'bg', allowInherit: false });
+  const news = seg([{ value: '', label: 'Red' }, { value: 'orange', label: 'Orange' }, { value: 'blue', label: 'Blue' }, { value: 'off', label: 'Off' }], ['orange', 'blue', 'off'].includes(st.tabActivity) ? st.tabActivity : '', v => (st.tabActivity = v));
   const appearance = () => [
     h('h3', { text: 'Appearance' }),
     h('div', { class: 'field' }, h('span', { text: 'Theme' }), theme),
+    h('div', { class: 'field' }, h('span', { text: 'New output in a tab you are not looking at' }), news, h('span', { class: 'hint', text: 'Colours the name of the tab until you show it. Echo of what you send (Type to many, saved commands, anti-idle) and the first seconds after connecting do not count; the tab menu turns it off for one tab.' })),
     field('Font size', fs, 'Each session and tab can use its own size (Ctrl + mouse wheel, or Aa in the status bar).'),
     h('div', { class: 'field' }, h('span', { text: 'Font weight' }), fw, h('span', { class: 'hint', text: 'Bold text from the device is always heavier (see the preview below).' })),
     h('h3', { text: 'Terminal colours', style: { marginTop: '16px' } }),

@@ -5,7 +5,7 @@
 // session or to every session in "Type to many".
 import { api, state, saveSettings } from './api.js';
 import { h, openDialog, field, check, toast, errMsg, plural, uuid, KEY } from './ui.js';
-import { commandTargets, pasteDelayFor } from './terms.js';
+import { commandTargets, pasteDelayFor, noteInput } from './terms.js';
 import { editSession } from './editor.js';
 
 const PLACEHOLDER = /\{([A-Za-z][\w.-]{0,30})\}/g;
@@ -51,10 +51,12 @@ async function send(item, targets) {
     if (lines.length > 1 && delay > 0) {
       for (const [i, line] of lines.entries()) {
         const last = i === lines.length - 1;
+        noteInput(ids);
         await api.SendText(ids, line, last ? item.return : true, !!item.fromTeam);
         if (!last) await sleep(delay);
       }
     } else {
+      noteInput(ids);
       await api.SendText(ids, text, item.return, !!item.fromTeam);
     }
   } catch (e) { toast(errMsg(e), 'error'); }

@@ -173,6 +173,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .tab[data-color]::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tag); }
 .tab.visible:not(.active) { color: var(--text); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .tab .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.tab.news .title { color: var(--activity, var(--c-red)); font-weight: 600; }
+.tab.news-orange { --activity: var(--c-orange); }
+.tab.news-blue { --activity: var(--c-blue); }
 .tab .close { width: 20px; height: 20px; border: 0; background: none; color: var(--faint); border-radius: var(--radius-s); cursor: pointer; display: grid; place-items: center; }
 .tab .close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
 .led { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--faint); }

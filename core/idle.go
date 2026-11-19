@@ -131,6 +131,8 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 				if _, err := c.Write([]byte(send)); err != nil {
 					return
 				}
+				// The device's echo is not new output for the tab bar.
+				a.emit("tab:typed", map[string]string{"tabId": t.id})
 			}
 		}
 	}

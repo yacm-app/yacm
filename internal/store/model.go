@@ -347,6 +347,14 @@ type Settings struct {
 	// PageKeys: "" or "scroll": Page Up/Down scroll the terminal unless a
 	// full-screen program (less, vi, top) runs; "device": always sent to it.
 	PageKeys string `json:"pageKeys,omitempty"`
+	// TabActivity colours the name of a tab that is not on screen when new
+	// output arrives in it: "" (red), "orange", "blue", or "off".
+	TabActivity string `json:"tabActivity,omitempty"`
+	// TreeSize is the size of the session list in percent (0 = 100).
+	TreeSize int `json:"treeSize,omitempty"`
+	// MiddleClick in the terminal: "" (nothing), "selection" (pastes what
+	// was last selected in a YACM terminal) or "clipboard".
+	MiddleClick string `json:"middleClick,omitempty"`
 	// HostnameRename: when the device prompt shows a hostname different
 	// from the session name: "ask" (default), "always" rename, or "off".
 	HostnameRename string `json:"hostnameRename,omitempty"`

@@ -335,8 +335,17 @@ test('the tab menu offers Clone session instead of font sizes', async ({ page })
   const connects = await calls(page, 'Connect');
   expect(connects.length).toBe(3);
   expect(connects[2].args[0].nodeId).toBe('s1');
-  // The clone sits right after the original tab.
-  await expect(page.locator('.tab .title')).toHaveText(['core-sw1', 'core-sw1', 'core-sw2']);
+  // The clone sits right after the original tab, numbered.
+  await expect(page.locator('.tab .title')).toHaveText(['core-sw1', 'core-sw1 (2)', 'core-sw2']);
+  await page.locator('.tab', { hasText: 'core-sw1' }).first().click({ button: 'right' });
+  await page.locator('.menu').getByText('Clone session').click();
+  await expect(page.locator('.tab .title')).toHaveText(['core-sw1', 'core-sw1 (3)', 'core-sw1 (2)', 'core-sw2']);
+  await page.locator('.tab', { hasText: 'core-sw1 (3)' }).locator('.close').click();
+  const disc = page.getByRole('button', { name: 'Disconnect and close' });
+  await page.waitForTimeout(150);
+  if (await disc.isVisible()) await disc.click();
+  await expect(page.locator('.tab .title')).toHaveText(['core-sw1', 'core-sw1 (2)', 'core-sw2']);
+  await page.locator('.tab', { hasText: 'core-sw1' }).first().click();
   expect(first).not.toBe(connects[2].args[0].tabId);
   // Aa in the status bar changes, resets or keeps the font size.
   await page.locator('.term:not([hidden]) .term-body').click();
@@ -1214,5 +1223,66 @@ test('a transfer from a terminal tab goes on when the terminal session ends, wit
   expect((await calls(page, 'FilesClose')).length).toBe(0);
   await ev(1300000000, 'done');
   await expect.poll(async () => (await calls(page, 'FilesClose')).length).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('the mouse wheel moves the tab bar, and the active tab stays in view', async ({ page }) => {
+  const errors = await open(page);
+  await page.setViewportSize({ width: 1000, height: 700 });
+  const search = page.locator('#search');
+  for (let i = 1; i <= 25; i++) {
+    await search.fill(`admin@192.0.2.${i}`);
+    await page.keyboard.press('Enter');
+  }
+  await expect(page.locator('.tab')).toHaveCount(25);
+  const bar = page.locator('#tabbar');
+  const scroll = () => bar.evaluate(b => b.scrollLeft);
+  const inView = sel => page.locator(sel).evaluate(el => { const b = el.parentElement.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left >= b.left - 1 && r.right <= b.right + 1; });
+  // The newest tab is active and in view.
+  expect(await scroll()).toBeGreaterThan(0);
+  expect(await inView('.tab.active')).toBe(true);
+  // The wheel scrolls sideways.
+  await bar.hover();
+  await page.mouse.wheel(0, -5000);
+  await expect.poll(scroll).toBe(0);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(scroll).toBeGreaterThan(0);
+  // Going to the first tab with the keyboard brings it into view.
+  await page.mouse.wheel(0, 5000);
+  await page.locator('.tab.active').click();
+  await page.keyboard.press('Control+Tab');
+  await expect.poll(() => inView('.tab.active')).toBe(true);
+  expect(await page.locator('.tab.active .title').textContent()).toBe('admin@192.0.2.1');
+  expect(errors).toEqual([]);
+});
+
+test('a tab not on screen shows new output in its name, not the echo of what was sent', async ({ page }) => {
+  const errors = await open(page);
+  const [sw1, sw2] = await connectTabs(page, ['core-sw1', 'core-sw2']);
+  const send = (id, text) => page.evaluate(([i, t]) => window.__emit('tab:data', { tabId: i, data: btoa(t) }), [id, text]);
+  const tab1 = page.locator('.tab', { hasText: 'core-sw1' });
+  // The first seconds after connecting (banner, login) do not count.
+  await send(sw1, 'Welcome\r\n');
+  await expect(tab1).not.toHaveClass(/news/);
+  await page.waitForTimeout(3100);
+  // Anti-idle's echo does not count either.
+  await page.evaluate(i => window.__emit('tab:typed', { tabId: i }), sw1);
+  await send(sw1, '!');
+  await expect(tab1).not.toHaveClass(/news/);
+  await page.waitForTimeout(1600);
+  await send(sw1, '%LINK-3-UPDOWN: Interface Gi1/0/1, changed state to down\r\n');
+  await expect(tab1).toHaveClass(/news news-red/);
+  // The tab on screen is never marked; showing the tab clears it.
+  await send(sw2, 'output\r\n');
+  await expect(page.locator('.tab', { hasText: 'core-sw2' })).not.toHaveClass(/news/);
+  await tab1.click();
+  await expect(tab1).not.toHaveClass(/news/);
+  // The tab menu turns it off for one tab.
+  await page.locator('.tab', { hasText: 'core-sw2' }).click({ button: 'right' });
+  await page.locator('.menu').getByText('Do not mark new output in this tab').click();
+  await page.locator('.tab', { hasText: 'core-sw2' }).click();
+  await tab1.click();
+  await send(sw2, 'more output\r\n');
+  await expect(page.locator('.tab', { hasText: 'core-sw2' })).not.toHaveClass(/news/);
   expect(errors).toEqual([]);
 });
