@@ -1102,7 +1102,7 @@ test('File servers: port 69 can be allowed on Linux, names with spaces, a tunnel
   await page.click('#btn-servers');
   await page.locator('.srv-row', { hasText: 'TFTP' }).locator('input.switch').check();
   const ask = page.getByRole('dialog', { name: 'Allow port 69?' });
-  await expect(ask).toContainText('asks for your password once');
+  await expect(ask).toContainText('other programs do not get it');
   await ask.getByRole('button', { name: 'Allow port 69…' }).click();
   await expect.poll(async () => (await calls(page, 'FileServerAllowPort')).map(c => c.args[0])).toEqual([69]);
   await expect(page.locator('.srv-row.on', { hasText: 'TFTP' })).toHaveCount(1);
