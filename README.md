@@ -111,7 +111,8 @@ hardware, get the separate demo download for your system
 - **Credential profiles and group defaults**: logins, jump hosts, algorithm
   profiles and colours inherited through groups and subgroups.
 - **Edit many sessions at once**: login, jump host, algorithms, port, group,
-  tags, logging, colours and more for a selection or a whole group.
+  tags, logging, colours, telnet or SSH and more for a selection or a whole
+  group; cut, copy and paste of sessions and groups with their passwords.
 - **Find among thousands**: one field filters the tree and connects (also to
   addresses nothing saved has); *Go to session* ranks matches and remembers
   what you opened last. Tags, favourites and colours for production and lab.
@@ -146,7 +147,8 @@ hardware, get the separate demo download for your system
   IOS and IOS XE.
 - **Files tab**: this computer and the device side by side, with drag and
   drop and the device's file systems, on the session's own connection (no
-  second MFA login).
+  second MFA login). Whole folders, *Resume* for a stopped SFTP transfer, and
+  *Send with sudo…* where a Linux server refuses to write.
 - **Command output to a file**, through the session: `show tech-support` and
   the like, with the pagers of every vendor answered.
 - **TFTP, HTTP and SCP/SFTP servers** with the command helper, and reverse tunnels

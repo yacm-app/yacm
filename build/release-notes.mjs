@@ -10,7 +10,8 @@ import { readFileSync } from 'node:fs';
 const version = (process.argv[2] || '').replace(/^v/, '');
 const num = version.split('-')[0];
 const src = readFileSync(new URL('../frontend/src/whatsnew.js', import.meta.url), 'utf8');
-const at = src.indexOf(`version: '${num}'`);
+// After the example in the comment at the top of the file.
+const at = src.indexOf(`version: '${num}'`, src.indexOf('export const WHATS_NEW'));
 const lines = [];
 if (at >= 0) {
   const end = src.indexOf('\n  },', at);
