@@ -1362,6 +1362,7 @@ function renderTabbar() {
     });
     bar.append(el);
   }
+  fitTitles(bar);
   // Keep the bar where it was; a tab that just became active is moved into
   // view (Ctrl+Tab, Go to session, a new session).
   bar.scrollLeft = scrolled;
@@ -1369,6 +1370,26 @@ function renderTabbar() {
     shownActive = active;
     const el = bar.children[order.indexOf(active)];
     if (el) el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }
+}
+
+// fitTitles shortens a tab name that does not fit in the middle, so that
+// its end stays readable: sessions are often named alike up to a number at
+// the end (cpt-c2960cx-01, cpt-c2960cx-02). Tabs keep their width and the
+// bar scrolls instead of squeezing them.
+function fitTitles(bar) {
+  for (const el of /** @type {NodeListOf<HTMLElement>} */ (bar.querySelectorAll('.tab .title'))) {
+    const full = el.textContent || '';
+    if (el.scrollWidth <= el.clientWidth + 1 || full.length < 8) continue;
+    el.title = full;
+    const tail = Math.min(10, Math.ceil(full.length / 3));
+    let lo = 1, hi = full.length - tail - 1, best = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      el.textContent = `${full.slice(0, mid)}…${full.slice(-tail)}`;
+      if (el.scrollWidth <= el.clientWidth + 1) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    el.textContent = `${full.slice(0, best)}…${full.slice(-tail)}`;
   }
 }
 

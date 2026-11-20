@@ -1466,3 +1466,21 @@ test('a fresh install offers a button for each program found, in the guide and o
   expect((await calls(page, 'PreviewForeign')).at(-1).args.slice(0, 2)).toEqual(['securecrt', '/home/u/.vandyke/SecureCRT/Config/Sessions']);
   expect(errors).toEqual([]);
 });
+
+test('tabs keep their width and a long name is shortened in the middle, so its end stays readable', async ({ page }) => {
+  const names = Array.from({ length: 14 }, (_, i) => `cpt-c2960cx-access-floor-${String(i + 1).padStart(2, '0')}`);
+  const nodes = names.map((name, i) => ({ id: `s${i}`, parentId: '', name, order: i, session: { protocol: 'ssh', host: `192.0.2.${i + 1}`, port: 22 } }));
+  const errors = await open(page, { nodes });
+  await page.setViewportSize({ width: 1200, height: 700 });
+  await connectTabs(page, names);
+  const titles = await page.locator('.tab .title').allTextContents();
+  expect(titles).toHaveLength(14);
+  // Different ends, so every tab can be told apart.
+  expect(new Set(titles.map(t => t.slice(-2))).size).toBe(14);
+  expect(titles[0]).toMatch(/^cpt-c2960cx.*….*-01$/);
+  expect(await page.locator('.tab .title').first().getAttribute('title')).toBe(names[0]);
+  const width = await page.locator('.tab').first().evaluate(el => el.getBoundingClientRect().width);
+  expect(width).toBeGreaterThan(200);
+  expect(await page.locator('#tabbar').evaluate(b => b.scrollWidth > b.clientWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
