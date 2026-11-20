@@ -387,7 +387,11 @@ func (cfg *Config) clientConfig(ctx context.Context, h Hop, ag agent.ExtendedAge
 	if err != nil {
 		return nil, err
 	}
-	kex, ciphers, macs, hostKeys := algorithms(cfg.profileFor(h))
+	profile := cfg.profileFor(h)
+	kex, ciphers, macs, hostKeys := algorithms(profile)
+	if profile == store.AlgoLegacy {
+		allowShortRSA()
+	}
 	if cfg.KnownHosts != nil {
 		hostKeys = preferKnown(hostKeys, cfg.KnownHosts.KnownKeyTypes(h.addr()))
 	}
@@ -401,6 +405,17 @@ func (cfg *Config) clientConfig(ctx context.Context, h Hop, ag agent.ExtendedAge
 		})
 	} else {
 		return nil, errors.New("host key verification is not configured")
+	}
+	if profile != store.AlgoLegacy {
+		// Keys under 1024 bits only with the Legacy set (once one session
+		// used it, Go itself no longer refuses them).
+		check := cb
+		cb = func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			if bits := rsaBits(key); bits > 0 && bits < 1024 {
+				return fmt.Errorf("%w (%d bits)", errShortRSA, bits)
+			}
+			return check(hostname, remote, key)
+		}
 	}
 	return &ssh.ClientConfig{
 		User:              h.User,
@@ -417,6 +432,29 @@ func (cfg *Config) clientConfig(ctx context.Context, h Hop, ag agent.ExtendedAge
 	}, nil
 }
 
+var (
+	errShortRSA  = errors.New("the server's RSA host key is too short")
+	shortRSAOnce sync.Once
+)
+
+// allowShortRSA lets Go accept RSA keys under 1024 bits (old devices with
+// 768-bit host keys), which it refuses by default (GODEBUG rsa1024min).
+// It is switched on for the whole program the first time a session uses
+// the Legacy algorithm set; other sessions still refuse such host keys
+// (errShortRSA).
+func allowShortRSA() {
+	shortRSAOnce.Do(func() {
+		v := os.Getenv("GODEBUG")
+		if strings.Contains(v, "rsa1024min=") {
+			return // set by the user: theirs
+		}
+		if v != "" {
+			v += ","
+		}
+		os.Setenv("GODEBUG", v+"rsa1024min=0")
+	})
+}
+
 // explainHandshake adds a hint when algorithm negotiation failed.
 func explainHandshake(err error, profile store.AlgoProfile) error {
 	msg := err.Error()
@@ -426,6 +464,9 @@ func explainHandshake(err error, profile store.AlgoProfile) error {
 			hint = "even the legacy algorithm set does not match this server"
 		}
 		return fmt.Errorf("%w (%s)", err, hint)
+	}
+	if errors.Is(err, errShortRSA) || strings.Contains(msg, "-bit keys are insecure") {
+		return fmt.Errorf("%w (the device's RSA key is shorter than 1024 bits: set Algorithms to \"Legacy\" for this session to accept it)", err)
 	}
 	if strings.Contains(msg, "unable to authenticate") {
 		return fmt.Errorf("authentication failed: %w", err)

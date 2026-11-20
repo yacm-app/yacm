@@ -79,7 +79,8 @@ SCP) and tunnels listen only while the user switches them on.
 
 - SSH algorithm profiles: *Secure* (default; post-quantum hybrid key exchange
   `mlkem768x25519-sha256`, curve25519, AES-GCM and ChaCha20-Poly1305),
-  *Compatible* and *Legacy* only for sessions that need them.
+  *Compatible* and *Legacy* only for sessions that need them. RSA keys
+  shorter than 1024 bits are refused unless the session uses *Legacy*.
 - **Host key verification**: an unknown key is shown with its fingerprint
   before the first connection; a changed key is a warning that names the old
   key. `@cert-authority` (host certificates) is supported.

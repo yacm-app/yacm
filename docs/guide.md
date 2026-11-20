@@ -111,8 +111,10 @@ Hovering shows each label.
   - three **algorithm profiles**: *Secure* (default; post-quantum
     `mlkem768x25519-sha256`, curve25519, AES-GCM, ChaCha20), *Compatible*
     (adds SHA-1 key exchange and `ssh-rsa` for IOS 15-era gear) and *Legacy*
-    (adds CBC, 3DES and group1). A failed negotiation says which profile to
-    try;
+    (adds CBC, 3DES and group1, and accepts RSA keys shorter than 1024
+    bits, such as the 768-bit host keys of very old devices; the host key
+    question shows the key's size). A failed negotiation says which profile
+    to try;
   - password, keyboard-interactive (including two-factor prompts), private
     keys in OpenSSH/PEM format or **PuTTY `.ppk`** (versions 2 and 3, no
     conversion), **OpenSSH user certificates** (`<key>-cert.pub` is picked up

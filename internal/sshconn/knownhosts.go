@@ -6,6 +6,7 @@ package sshconn
 import (
 	"bufio"
 	"bytes"
+	"crypto/rsa"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -245,7 +246,7 @@ func (k *KnownHosts) Callback(decide func(HostKeyInfo) (bool, error)) ssh.HostKe
 		}
 		info := HostKeyInfo{
 			Host:        knownhosts.Normalize(hostname),
-			KeyType:     key.Type(),
+			KeyType:     keyLabel(key),
 			Fingerprint: ssh.FingerprintSHA256(key),
 			Changed:     len(ke.Want) > 0,
 		}
@@ -578,4 +579,33 @@ func (k *KnownHosts) ImportLines(lines []string) (int, error) {
 	defer f.Close()
 	_, err = f.WriteString(strings.Join(add, "\n") + "\n")
 	return len(add), err
+}
+
+// keyLabel is the key type for the host key question, with the size of an
+// RSA key (one under 1024 bits is marked weak).
+func keyLabel(key ssh.PublicKey) string {
+	bits := rsaBits(key)
+	switch {
+	case bits == 0:
+		return key.Type()
+	case bits < 1024:
+		return fmt.Sprintf("%s (%d-bit, weak)", key.Type(), bits)
+	default:
+		return fmt.Sprintf("%s (%d-bit)", key.Type(), bits)
+	}
+}
+
+// rsaBits is the size of an RSA key, 0 for other keys.
+func rsaBits(key ssh.PublicKey) int {
+	if cert, ok := key.(*ssh.Certificate); ok {
+		key = cert.Key
+	}
+	ck, ok := key.(ssh.CryptoPublicKey)
+	if !ok {
+		return 0
+	}
+	if rk, ok := ck.CryptoPublicKey().(*rsa.PublicKey); ok {
+		return rk.N.BitLen()
+	}
+	return 0
 }
