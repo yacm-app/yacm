@@ -26,6 +26,7 @@
   ];
   const backups = cfg.backups || [];
   let favorites = cfg.favorites || [];
+  let uploads = 0;
   const servers = {};
   let lowPortAllowed = 1024;
   const clusters = () => {
@@ -93,15 +94,20 @@
     AnswerPrompt: () => null,
     RestoreBackup: () => null,
     // File transfer: a device with flash: and this computer's Downloads.
-    FilesOpen: req => ({ id: 'f1', name: 'core-sw1', kind: 'scp', home: 'flash:', roots: [{ path: 'flash:', size: 7897796608, free: 6000000000 }, { path: 'usb0:', size: 8e9, free: 7e9 }], summary: 'curve25519-sha256 · ssh-ed25519 · aes128-gcm', shared: !!req.tabId }),
+    FilesOpen: req => cfg.files ? { id: 'f1', name: 'core-sw1', kind: cfg.files.kind, home: cfg.files.home, roots: [], summary: 'curve25519-sha256 · ssh-ed25519 · aes128-gcm', shared: !!req.tabId } : ({ id: 'f1', name: 'core-sw1', kind: 'scp', home: 'flash:', roots: [{ path: 'flash:', size: 7897796608, free: 6000000000 }, { path: 'usb0:', size: 8e9, free: 7e9 }], summary: 'curve25519-sha256 · ssh-ed25519 · aes128-gcm', shared: !!req.tabId }),
     FilesClose: () => null,
-    FilesList: (id, dir) => (dir === 'flash:' ? [
+    FilesList: (id, dir) => (cfg.files ? (dir === cfg.files.home ? cfg.files.list : []) : dir === 'flash:' ? [
       { name: 'tracelogs', path: 'flash:tracelogs', size: 4096, dir: true, mod: '2026-10-20T09:12:33Z' },
       { name: 'c8000v-universalk9.17.12.04.SPA.bin', path: 'flash:c8000v-universalk9.17.12.04.SPA.bin', size: 3145728, dir: false, mod: '2026-10-20T09:12:33Z' },
       { name: 'vlan.dat', path: 'flash:vlan.dat', size: 3384, dir: false, mod: '2026-10-20T09:12:33Z' },
     ] : []),
     FilesFree: () => 6000000000,
-    FilesUpload: (id, local, remote) => 'x-up',
+    FilesUpload: () => (uploads++ ? `x-up${uploads}` : 'x-up'),
+    FilesUploadFolder: () => 'x-upd',
+    FilesDownloadFolder: () => 'x-downd',
+    FilesResume: () => 'x-resumed',
+    FilesDiscard: () => null,
+    FilesTempDir: () => '/tmp/yacm-0123456789ab',
     FilesDownload: () => 'x-down',
     LocalHome: () => '/home/ivan/Downloads',
     FileServerFolder: () => '/home/ivan/Downloads/YACM file servers',

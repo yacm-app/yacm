@@ -7,7 +7,7 @@
 // SCP with exec commands (dir, verify /md5, delete) as on Cisco IOS.
 import { api, on, state, isNewerType, newerTypeText } from './api.js';
 import { h, toast, errMsg, confirmDialog, openDialog, field, check, contextMenu, icon, plural } from './ui.js';
-import { addPaneTab, paneShell, paintPaneLabel, refreshTab, tabById, terminalTabFor, activate } from './terms.js';
+import { addPaneTab, paneShell, paintPaneLabel, refreshTab, tabById, terminalTabFor, activate, tabName } from './terms.js';
 
 // ---- helpers ------------------------------------------------------------------
 
@@ -82,6 +82,8 @@ const safeName = s => s.replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^_+|_+$/g, 
 const transfers = new Map();
 const listeners = new Set();
 let panelIds = new Set(); // transfers started from terminal tabs, shown in the floating panel
+/** @type {Map<string, any>} the session of each file connection (for the sudo step) */
+const connNodes = new Map();
 
 export function onTransfer(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
@@ -134,8 +136,11 @@ function eta(x) {
   return ` · ${(s / 3600).toFixed(1)} h left`;
 }
 
-// transferRow draws one transfer (in a Files tab or the floating panel).
-function transferRow(x) {
+// transferRow draws one transfer (in a Files tab or the floating panel);
+// filesNow gives the tab's file connection at the time of a click (Resume
+// goes on over it after Reconnect).
+/** @param {any} x @param {() => string} [filesNow] */
+function transferRow(x, filesNow) {
   const pct = x.total ? Math.min(100, (x.done / x.total) * 100) : x.state === 'done' ? 100 : 0;
   const running = active(x);
   const queued = x.state === 'queued';
@@ -143,18 +148,101 @@ function transferRow(x) {
   const detail = queued ? 'waits for the transfer before it (the device takes one at a time)' : running
     ? `${fmtBytes(x.done)}${x.total ? ` of ${fmtBytes(x.total)}` : ''}${x.rate > 0 && x.state === 'running' ? ` · ${fmtBytes(x.rate)}/s${eta(x)}` : ''}`
     : x.state === 'error' ? x.error : x.dir === 'up' ? `to ${x.remote}` : `to ${x.local}`;
+  const files = x.files ? `${plural(x.files, 'file', 'files')} · ` : '';
+  const now = () => (filesNow ? filesNow() : x.filesId);
   return h('div', { class: `xfer ${x.state}`, title: `${x.dir === 'up' ? `${x.local} → ${x.remote}` : x.dir === 'down' ? `${x.remote} → ${x.local}` : `${x.remote} → ${x.local}`}${x.md5 ? `\nMD5 ${x.md5}` : ''}` },
     h('span', { class: 'dir', text: x.dir === 'cmd' ? '⌘' : arrow, 'aria-label': x.dir === 'up' ? 'Upload' : 'Download' }),
     h('div', { class: 'what' },
       h('div', { class: 'line' }, h('span', { class: 'name', text: x.name }), h('span', { class: 'st', text: stateText(x) })),
       h('div', { class: `progress${x.state === 'verifying' ? ' indeterminate' : ''}` }, h('div', { class: 'fill', style: { width: `${pct}%` } })),
-      h('div', { class: 'detail', text: detail }),
-      x.hint && x.state === 'running' ? h('div', { class: 'detail hint', text: x.hint }) : null),
+      h('div', { class: 'detail', text: files + detail }),
+      x.hint && x.state === 'running' ? h('div', { class: 'detail hint', text: x.hint }) : null,
+      x.resume && !running && filesNow ? h('div', { class: 'detail hint', text: 'If the connection dropped: Reconnect, then Resume.' }) : null),
     running
       ? h('button', { class: 'text-btn', text: 'Cancel', on: { click: () => api.TransferCancel(x.id) } })
       : x.state === 'done' && x.dir !== 'up'
         ? h('button', { class: 'text-btn', text: 'Show', title: 'Show the file in the file manager', on: { click: () => api.RevealFile(x.local).catch(e => toast(errMsg(e), 'error')) } })
-        : null);
+        : x.resume
+          ? h('button', { class: 'text-btn', text: 'Resume', title: 'Go on from where it stopped', on: { click: () => resume(x, now()) } })
+          : x.denied && x.state === 'error'
+            ? h('button', { class: 'text-btn', text: 'Send with sudo…', title: 'Send it to /tmp and copy it into place with sudo', on: { click: () => viaTmp(x, now()).catch(e => toast(errMsg(e), 'error')) } })
+            : null);
+}
+
+// listsChanged redraws the transfer lists after one was replaced.
+function listsChanged(filesId) {
+  listeners.forEach(f => f({ id: '', filesId, state: 'replaced' }));
+  renderPanel();
+}
+
+// forget drops finished transfers from the lists; stopped ones that could
+// have gone on lose their partial files.
+function forget(ids) {
+  const stopped = ids.filter(id => transfers.get(id)?.resume);
+  if (stopped.length) api.FilesDiscard(stopped).catch(() => {});
+  ids.forEach(id => transfers.delete(id));
+}
+
+// resume goes on with a transfer that stopped part-way (SFTP); the new
+// transfer takes its place in the lists.
+async function resume(x, filesId) {
+  let id;
+  try { id = await api.FilesResume(x.id, filesId); } catch (e) { toast(errMsg(e), 'error'); return; }
+  transfers.delete(x.id);
+  if (panelIds.delete(x.id)) panelIds.add(id);
+  listsChanged(x.filesId);
+}
+
+// whenDone calls fn with a transfer once it has finished.
+function whenDone(id, fn) {
+  const x = transfers.get(id);
+  if (x && !active(x)) { fn(x); return; }
+  const off = onTransfer(y => { if (y.id === id && !active(y)) { off(); fn(y); } });
+}
+
+const shq = s => `'${s.replaceAll("'", `'\\''`)}'`;
+
+// viaTmp sends what a Linux server refused (no permission to write there)
+// into a new folder of its own in /tmp (FilesTempDir), then gives the
+// command that copies it into place with sudo. cp, not mv: a
+// replaced file keeps its owner and mode, a new one belongs to root.
+async function viaTmp(x, filesId) {
+  const folder = x.name.endsWith('/');
+  const name = baseName(x.local);
+  const node = connNodes.get(x.filesId);
+  const ok = await confirmDialog({
+    title: 'Send it with sudo?',
+    message: `${node?.name || 'The device'} does not let your user write to ${folder ? x.remote : rparent(x.remote)}. YACM can send ${name} to a new folder in /tmp, then give you the sudo command that copies it to ${x.remote}.`,
+    ok: 'Send to /tmp',
+  });
+  if (!ok) return;
+  const dir = await api.FilesTempDir(filesId);
+  const tmp = `${dir}/${name}`;
+  const id = await (folder ? api.FilesUploadFolder(filesId, x.local, tmp) : api.FilesUpload(filesId, x.local, tmp, false));
+  if (panelIds.has(x.id)) track(id);
+  whenDone(id, y => {
+    if (y.state !== 'done') return;
+    const cmd = folder
+      ? `sudo mkdir -p -- ${shq(x.remote)} && sudo cp -R -- ${shq(`${tmp}/.`)} ${shq(`${x.remote}/`)} && rm -rf -- ${shq(dir)}`
+      : `sudo cp -- ${shq(tmp)} ${shq(x.remote)} && rm -rf -- ${shq(dir)}`;
+    sudoStep(node, cmd);
+  });
+}
+
+function sudoStep(node, cmd) {
+  const term = node ? terminalTabFor(node.id) : null;
+  /** @type {{ label: string, kind?: string, default?: boolean, onClick?: () => boolean }[]} */
+  const buttons = [{ label: 'Close' },
+    { label: 'Copy', onClick: () => { navigator.clipboard?.writeText(cmd).then(() => toast('Copied.', 'info')).catch(() => {}); return false; } }];
+  if (term) buttons.push({ label: `Type into ${tabName(term)}`, kind: 'primary', default: true, onClick: () => { api.Write(term.id, cmd).catch(() => {}); activate(term.id); return true; } });
+  openDialog({
+    title: 'Copy it into place with sudo',
+    body: h('div', {},
+      h('p', { text: `It is on ${node?.name || 'the device'} in /tmp. Run this command in a terminal there:` }),
+      h('pre', { class: 'hostkey sudo-cmd', style: { whiteSpace: 'pre-wrap', wordBreak: 'break-all' }, text: cmd }),
+      h('p', { class: 'hint', text: term ? 'The command is typed without Enter, so you can read it first. sudo asks for your password on the device.' : 'Open a terminal tab of this session to run it. sudo asks for your password there.' })),
+    buttons,
+  });
 }
 
 // The floating panel lists transfers started from terminal tabs. Hide folds
@@ -180,13 +268,15 @@ function renderPanel() {
   panel.replaceChildren(
     h('div', { class: 'head' }, h('b', { text: running ? title : 'Transfers' }),
       finished && running ? h('button', { class: 'text-btn', text: 'Clear finished', on: { click: () => {
-        panelIds = new Set([...panelIds].filter(id => { const x = transfers.get(id); return x && active(x); }));
+        const keep = [...panelIds].filter(id => { const x = transfers.get(id); return x && active(x); });
+        forget([...panelIds].filter(id => !keep.includes(id)));
+        panelIds = new Set(keep);
         renderPanel();
       } } }) : null,
       running
         ? h('button', { class: 'text-btn', text: 'Hide', title: 'Fold the list into a small bar; the transfers go on', on: { click: () => { panelFolded = true; renderPanel(); } } })
-        : h('button', { class: 'text-btn', text: 'Close', on: { click: () => { panelIds = new Set(); renderPanel(); } } })),
-    h('div', { class: 'rows' }, ...list.slice(-8).reverse().map(transferRow)));
+        : h('button', { class: 'text-btn', text: 'Close', on: { click: () => { forget([...panelIds]); panelIds = new Set(); renderPanel(); } } })),
+    h('div', { class: 'rows' }, ...list.slice(-8).reverse().map(x => transferRow(x))));
 }
 
 function track(id) { panelIds.add(id); renderPanel(); }
@@ -219,6 +309,7 @@ function tabConn(tabId) {
   let p = tabConns.get(tabId);
   if (!p) {
     p = api.FilesOpen({ nodeId: '', tabId, ownerId: tabId, scp: false });
+    p.then(info => connNodes.set(info.id, tabById(tabId)?.node)).catch(() => {});
     tabConns.set(tabId, p);
     p.catch(() => tabConns.delete(tabId));
   }
@@ -642,6 +733,7 @@ class FilesTab {
     this.alert = null;
     this.waiting = null;
     this.info = null;
+    this.conns = new Set(); // its file connections, the one now and those before Reconnect
     this.verify = LS.get('verify', '1') === '1';
     /** @type {any} */ this.el = null;
     /** @type {any} */ this.label = null;
@@ -659,8 +751,8 @@ class FilesTab {
       onDrop: d => this.send(d.entries),
     });
     const mid = h('div', { class: 'files-mid' },
-      h('button', { class: 'btn small', title: 'Send the selected files to the device', text: '→', 'aria-label': 'Send to the device', on: { click: () => this.send(this.local.selected()) } }),
-      h('button', { class: 'btn small', title: 'Copy the selected files to this computer', text: '←', 'aria-label': 'Copy to this computer', on: { click: () => this.get(this.remote.selected()) } }));
+      h('button', { class: 'btn small', title: 'Send the selected files and folders to the device', text: '→', 'aria-label': 'Send to the device', on: { click: () => this.send(this.local.selected()) } }),
+      h('button', { class: 'btn small', title: 'Copy the selected files and folders to this computer', text: '←', 'aria-label': 'Copy to this computer', on: { click: () => this.get(this.remote.selected()) } }));
     this.queue = h('div', { class: 'xfer-queue', hidden: true });
     this.overlay = h('div', { class: 'files-overlay', hidden: true });
     this.el.append(h('div', { class: 'files-body' }, h('div', { class: 'files-panes' }, this.local.el, mid, this.remote.el), this.queue), this.overlay);
@@ -709,6 +801,8 @@ class FilesTab {
       return;
     }
     if (!this.el.isConnected) { api.FilesClose(this.info.id); return; }
+    connNodes.set(this.info.id, this.node);
+    this.conns.add(this.info.id);
     this.remote.setAdapter(remoteAdapter(this.info));
     this.remote.setRoots(this.info.roots || []);
     this.setState('connected');
@@ -720,11 +814,12 @@ class FilesTab {
   reconnect() { if (this.state !== 'connecting') this.connect(); }
 
   busy() {
-    const n = [...transfers.values()].filter(x => x.filesId === this.info?.id && (active(x))).length;
+    const n = [...transfers.values()].filter(x => this.conns.has(x.filesId) && active(x)).length;
     return n ? plural(n, 'transfer', 'transfers') : '';
   }
 
   dispose() {
+    forget([...transfers.values()].filter(x => this.conns.has(x.filesId) && !active(x)).map(x => x.id));
     this.unlisten();
     this.offStatus?.();
     if (this.info) api.FilesClose(this.info.id);
@@ -756,32 +851,43 @@ class FilesTab {
   }
 
   onTransfer(x) {
-    if (!this.info || x.filesId !== this.info.id) return;
+    if (!this.conns.has(x.filesId)) return;
     this.renderQueue();
     if (x.state === 'done') {
       if (x.dir === 'up' && rparent(x.remote) === rparent(rjoin(this.remote.dir, 'x'))) this.remote.refresh();
       if (x.dir === 'down') this.local.refresh();
     }
-    if (x.state === 'error' && x.error) toast(`${x.name}: ${x.error}`, 'error', 9000);
+    // The list shows the error (and Resume or Send with sudo… beside it):
+    // a toast only while this tab is behind another one.
+    if (x.state === 'error' && x.error && this.el.offsetParent === null) toast(`${x.name}: ${x.error}${x.denied ? ' (Send with sudo… in its Files tab)' : x.resume ? ' (Resume in its Files tab)' : ''}`, 'error', 9000);
   }
 
   renderQueue() {
-    const list = [...transfers.values()].filter(x => x.filesId === this.info?.id);
+    const list = [...transfers.values()].filter(x => this.conns.has(x.filesId));
     this.queue.hidden = !list.length;
     const anyDone = list.some(x => !active(x));
     this.queue.replaceChildren(
       h('div', { class: 'head' }, h('b', { text: 'Transfers' }),
         anyDone ? h('button', { class: 'text-btn', text: 'Clear finished', on: { click: () => {
-          for (const x of list) if (!active(x)) transfers.delete(x.id);
+          forget(list.filter(x => !active(x)).map(x => x.id));
           this.renderQueue();
         } } }) : null),
-      h('div', { class: 'rows' }, ...list.slice(-30).reverse().map(transferRow)));
+      h('div', { class: 'rows' }, ...list.slice(-30).reverse().map(x => transferRow(x, () => (this.state === 'connected' ? this.info.id : '')))));
   }
 
   async send(entries) {
     if (this.state !== 'connected') return;
     const files = entries.filter(e => !e.dir);
-    if (entries.some(e => e.dir)) toast('Folders are not copied yet: open the folder and select its files.', 'info', 6000);
+    const dirs = entries.filter(e => e.dir);
+    if (dirs.length && this.info.kind !== 'sftp') toast('Folders are copied over SFTP; this device takes single files.', 'info', 6000);
+    else if (dirs.length) {
+      const names = new Set(this.remote.entries.map(e => e.name));
+      const clash = dirs.filter(d => names.has(d.name)).map(d => d.name);
+      if (!clash.length || await confirmDialog({ title: 'Copy into folders on the device?', message: `${clash.join(', ')} already ${clash.length === 1 ? 'exists' : 'exist'} in ${this.remote.dir}. Files with the same names are replaced.`, ok: 'Copy', danger: true })) {
+        LS.set(remoteDirKey(this.node), this.remote.dir);
+        for (const d of dirs) api.FilesUploadFolder(this.info.id, d.path, rjoin(this.remote.dir, d.name)).catch(e => toast(errMsg(e), 'error'));
+      }
+    }
     if (!files.length) return;
     const targets = await deviceNames(this.remote.dir, files.map(f => f.name));
     if (!targets) return;
@@ -797,7 +903,19 @@ class FilesTab {
   async get(entries) {
     if (this.state !== 'connected' || !this.local.dir) return;
     const files = entries.filter(e => !e.dir);
-    if (entries.some(e => e.dir)) toast('Folders are not copied yet: open the folder and select its files.', 'info', 6000);
+    const dirs = entries.filter(e => e.dir);
+    if (dirs.length) {
+      let targets;
+      try {
+        targets = await Promise.all(dirs.map(async d => [d, await api.LocalJoin(this.local.dir, d.name)]));
+      } catch (e) { toast(errMsg(e), 'error'); return; }
+      const clash = [];
+      for (const [d, p] of targets) if (await api.LocalExists(p)) clash.push(d.name);
+      if (!clash.length || await confirmDialog({ title: 'Copy into folders on this computer?', message: `${clash.join(', ')} already ${clash.length === 1 ? 'exists' : 'exist'} in ${this.local.dir}. Files with the same names are replaced.`, ok: 'Copy', danger: true })) {
+        LS.set('localDir', this.local.dir);
+        for (const [d, p] of targets) api.FilesDownloadFolder(this.info.id, d.path, p).catch(e => toast(errMsg(e), 'error'));
+      }
+    }
     if (!files.length) return;
     let targets;
     try {
@@ -813,9 +931,8 @@ class FilesTab {
   }
 
   localMenu(ev, es) {
-    const files = es.filter(e => !e.dir);
     contextMenu(ev.clientX, ev.clientY, [
-      { label: files.length > 1 ? `Send ${files.length} files to the device` : 'Send to the device', action: () => this.send(es), disabled: !files.length || this.state !== 'connected' },
+      { label: es.length > 1 ? `Send ${es.length} items to the device` : 'Send to the device', action: () => this.send(es), disabled: !es.length || this.state !== 'connected' },
       { label: 'Show in the file manager', action: () => api.RevealFile(es[0]?.path || this.local.dir) },
       '-',
       { label: 'New folder…', action: () => this.local.newFolder() },
@@ -824,10 +941,9 @@ class FilesTab {
   }
 
   remoteMenu(ev, es) {
-    const files = es.filter(e => !e.dir);
     const one = es.length === 1 ? es[0] : null;
     contextMenu(ev.clientX, ev.clientY, [
-      { label: files.length > 1 ? `Copy ${files.length} files to this computer` : 'Copy to this computer', action: () => this.get(es), disabled: !files.length },
+      { label: es.length > 1 ? `Copy ${es.length} items to this computer` : 'Copy to this computer', action: () => this.get(es), disabled: !es.length },
       { label: 'Save as…', action: async () => {
         const dest = await api.ChooseSaveAs(`Save ${one.name}`, this.local.dir, one.name);
         if (dest) api.FilesDownload(this.info.id, one.path, dest, one.size, this.verify).catch(e => toast(errMsg(e), 'error'));

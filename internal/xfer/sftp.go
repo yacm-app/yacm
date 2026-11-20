@@ -5,6 +5,8 @@ package xfer
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"io"
 	"os"
 	"sort"
@@ -19,6 +21,21 @@ type sftpRemote struct {
 }
 
 func (s *sftpRemote) Kind() string { return "sftp" }
+
+// TempDir makes a new folder in /tmp that only this user can open.
+func (s *sftpRemote) TempDir(context.Context) (string, error) {
+	b := make([]byte, 6)
+	rand.Read(b)
+	p := "/tmp/yacm-" + hex.EncodeToString(b)
+	if err := s.c.Mkdir(p); err != nil {
+		return "", err
+	}
+	if err := s.c.Chmod(p, 0o700); err != nil {
+		_ = s.c.RemoveDirectory(p)
+		return "", err
+	}
+	return p, nil
+}
 
 func (s *sftpRemote) Home(context.Context) string {
 	if wd, err := s.c.Getwd(); err == nil && wd != "" {
@@ -98,6 +115,49 @@ func (s *sftpRemote) Put(ctx context.Context, p string, r io.Reader, _ int64, pr
 	if progress != nil {
 		progress(cr.n)
 	}
+	return err
+}
+
+func (s *sftpRemote) GetFrom(ctx context.Context, p string, w io.Writer, off int64, progress func(int64)) error {
+	f, err := s.c.Open(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return err
+	}
+	tick := func(n int64) {
+		if progress != nil {
+			progress(off + n)
+		}
+	}
+	cw := &countingWriter{w: ctxWriter{ctx, w}, tick: tick}
+	_, err = f.WriteTo(cw)
+	tick(cw.n)
+	return err
+}
+
+func (s *sftpRemote) PutFrom(ctx context.Context, p string, r io.Reader, off, _ int64, progress func(int64)) error {
+	f, err := s.c.OpenFile(p, os.O_WRONLY)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		f.Close()
+		return err
+	}
+	tick := func(n int64) {
+		if progress != nil {
+			progress(off + n)
+		}
+	}
+	cr := &countingReader{r: r, tick: tick, ctx: ctx}
+	_, err = f.ReadFromWithConcurrency(cr, 0)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	tick(cr.n)
 	return err
 }
 

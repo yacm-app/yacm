@@ -43,7 +43,9 @@ export interface Backend {
   FileServerViaTunnel(a1: string, a2: string): Promise<any>;
   FilesClose(a1: string): Promise<void>;
   FilesCommandToFile(a1: string, a2: string, a3: string): Promise<string>;
+  FilesDiscard(a1: string[]): Promise<void>;
   FilesDownload(a1: string, a2: string, a3: string, a4: number, a5: boolean): Promise<string>;
+  FilesDownloadFolder(a1: string, a2: string, a3: string): Promise<string>;
   FilesFree(a1: string, a2: string): Promise<number>;
   FilesList(a1: string, a2: string): Promise<any[]>;
   FilesMD5(a1: string, a2: string): Promise<string>;
@@ -51,7 +53,10 @@ export interface Backend {
   FilesOpen(a1: any): Promise<any>;
   FilesRemove(a1: string, a2: string): Promise<void>;
   FilesRename(a1: string, a2: string, a3: string): Promise<void>;
+  FilesResume(a1: string, a2: string): Promise<string>;
+  FilesTempDir(a1: string): Promise<string>;
   FilesUpload(a1: string, a2: string, a3: string, a4: boolean): Promise<string>;
+  FilesUploadFolder(a1: string, a2: string, a3: string): Promise<string>;
   ForgetNetBoxToken(): Promise<void>;
   GetOpenTabs(): Promise<any>;
   GetSecretFlags(a1: string): Promise<any>;

@@ -84,6 +84,7 @@ type App struct {
 	scpOnly    map[string]bool         // sessions whose device refused SFTP (no second attempt)
 	serialOnly map[string]bool         // sessions whose device takes one channel at a time
 	xfers      map[string]*transferJob // running transfers
+	resumes    map[string]*resumeJob   // stopped SFTP transfers that can go on
 
 	fsrvOnce sync.Once
 	fsrv     *fileserver.Manager // TFTP, HTTP and SCP servers for devices
@@ -145,6 +146,7 @@ func newApp(loc dataLocation) (*App, error) {
 		prompts: map[string]chan PromptAnswer{},
 		files:   map[string]*filesConn{},
 		xfers:   map[string]*transferJob{},
+		resumes: map[string]*resumeJob{},
 	}
 	a.kh = sshconn.NewKnownHosts(filepath.Join(dir, "known_hosts"), st.Settings().UseSystemKnownHost)
 	a.kh.Warn = func(m string) { applog.Warnf("trusted host keys: %s", m) }
@@ -225,6 +227,7 @@ func (a *App) shutdown(ctx context.Context) {
 	a.tabsMu.Unlock()
 	a.closeOpenTabs()
 	a.closeAllFiles()
+	a.dropResumes()
 	if a.fsrv != nil {
 		a.fsrv.StopAll()
 	}

@@ -170,6 +170,21 @@ Hovering shows each label.
     and Huawei VRP.
   - Network devices end a file name at a space, so YACM offers to send such
     files with underscores (`cbr copy.txt` as `cbr_copy.txt`).
+  - Folders are copied with everything in them: from a device in both
+    directions over SFTP, and from network devices with SCP (such as
+    `flash:/configs` to this computer). Up to 20,000 files and 32 folders
+    deep; symbolic links on this computer are not followed.
+  - A transfer over SFTP that stops part-way (the connection dropped, or
+    *Cancel*) can go on with *Resume*: a download from its `.part` file, an
+    upload from what the server already has. If the connection dropped,
+    press *Reconnect* first. The `.part` file is removed with *Clear
+    finished*, when the tab closes and when YACM closes.
+  - When a Linux server refuses a file (no permission to write there, as in
+    `/etc`), *Send with sudo…* sends it into a new folder in `/tmp` that
+    only your user can open, then shows the command that copies it into
+    place (`sudo cp`, so a replaced file keeps its owner and mode) and
+    removes the folder. *Type into* types it into the session's terminal
+    tab without Enter; sudo asks for your password there.
 - **Command output to a file** (*Files ▾ > Save command output to file…*):
   types one command into the open session (SSH, telnet or serial, with the
   rights the session has, enable mode included), answers `--More--` and the

@@ -726,6 +726,45 @@ test('the file browser lists both sides and sends a file with an MD5 check', asy
   expect(errors).toEqual([]);
 });
 
+test('the file browser copies folders, resumes, and offers sudo where writing is refused', async ({ page }) => {
+  const errors = await open(page, { files: { kind: 'sftp', home: '/srv', list: [
+    { name: 'configs', path: '/srv/configs', size: 4096, dir: true, mod: '2026-10-20T09:12:33Z' },
+    { name: 'notes.txt', path: '/srv/notes.txt', size: 120, dir: false, mod: '2026-10-20T09:12:33Z' },
+  ] } });
+  await page.locator('#tree .row.session', { hasText: 'core-sw1' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Browse files' }).click();
+  const tab = page.locator('.term.files-tab');
+  await expect(tab.locator('.files-pane.remote .row')).toHaveCount(2);
+  // A folder from the device.
+  await tab.locator('.files-pane.remote .row', { hasText: 'configs' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Copy to this computer' }).click();
+  await expect.poll(async () => (await calls(page, 'FilesDownloadFolder')).map(c => c.args)).toEqual([['f1', '/srv/configs', '/home/ivan/Downloads/configs']]);
+  // A folder to the device.
+  await tab.locator('.files-pane.local .row', { hasText: 'new-image.bin' }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Send to the device' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+
+  // A download that stopped part-way goes on.
+  await page.evaluate(() => window.__emit('xfer:progress', { id: 'x-down', filesId: 'f1', name: 'notes.txt', dir: 'down', local: '/home/ivan/Downloads/notes.txt', remote: '/srv/notes.txt', done: 60, total: 120, state: 'error', error: 'connection lost', resume: true }));
+  const row = tab.locator('.xfer', { hasText: 'notes.txt' });
+  await row.getByRole('button', { name: 'Resume' }).click();
+  await expect.poll(async () => (await calls(page, 'FilesResume')).map(c => c.args)).toEqual([['x-down', 'f1']]);
+  await expect(row).toHaveCount(0);
+
+  // An upload the server refused: to /tmp, then the sudo command.
+  await page.evaluate(() => window.__emit('xfer:progress', { id: 'x-fail', filesId: 'f1', name: 'app.conf', dir: 'up', local: '/home/ivan/Downloads/app.conf', remote: "/etc/app/it's.conf", done: 0, total: 10, state: 'error', error: 'permission denied', denied: true }));
+  await tab.locator('.xfer', { hasText: 'app.conf' }).getByRole('button', { name: 'Send with sudo…' }).click();
+  await page.getByRole('button', { name: 'Send to /tmp' }).click();
+  await expect.poll(async () => (await calls(page, 'FilesUpload')).length).toBe(1);
+  const tmpDir = '/tmp/yacm-0123456789ab';
+  expect((await calls(page, 'FilesUpload'))[0].args).toEqual(['f1', '/home/ivan/Downloads/app.conf', `${tmpDir}/app.conf`, false]);
+  await page.evaluate(() => window.__emit('xfer:progress', { id: 'x-up', filesId: 'f1', name: 'app.conf', dir: 'up', local: '/home/ivan/Downloads/app.conf', remote: '/tmp/x/app.conf', done: 10, total: 10, state: 'done' }));
+  const dlg = page.getByRole('dialog', { name: 'Copy it into place with sudo' });
+  await expect(dlg.locator('pre')).toHaveText(`sudo cp -- '${tmpDir}/app.conf' '/etc/app/it'\\''s.conf' && rm -rf -- '${tmpDir}'`);
+  await dlg.getByRole('button', { name: 'Close' }).click();
+  expect(errors).toEqual([]);
+});
+
 test('a new session logs to a file by default', async ({ page }) => {
   const errors = await open(page);
   await page.click('#btn-new-session');

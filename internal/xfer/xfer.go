@@ -57,6 +57,18 @@ type Remote interface {
 	Close() error
 }
 
+// Resumer continues a transfer that stopped part-way (SFTP): progress
+// counts from the start of the file.
+type Resumer interface {
+	GetFrom(ctx context.Context, p string, w io.Writer, off int64, progress func(int64)) error
+	PutFrom(ctx context.Context, p string, r io.Reader, off, size int64, progress func(int64)) error
+}
+
+// TempDirer makes a new folder of its own in /tmp (SFTP on Linux).
+type TempDirer interface {
+	TempDir(ctx context.Context) (string, error)
+}
+
 // ErrNotSupported is returned for an operation a device cannot do.
 var ErrNotSupported = errors.New("the device does not support this")
 
