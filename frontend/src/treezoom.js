@@ -18,6 +18,7 @@ export function treeSize(pct = state.settings.treeSize) {
 // applyTreeZoom sets the size from the settings.
 export function applyTreeZoom() {
   document.getElementById('sidebar')?.style.setProperty('--tree-zoom', String(treeSize() / 100));
+  window.dispatchEvent(new Event('treezoom'));
 }
 
 let saveTimer = 0;

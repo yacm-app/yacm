@@ -11,6 +11,43 @@
  * @param {...any} children
  * @returns {any}
  */
+// fitMiddle shortens texts that do not fit their element in the middle, so
+// the end stays readable: sessions are often named alike up to a number at
+// the end (cpt-c2960cx-01, cpt-c2960cx-02). The full text becomes the
+// tooltip. Widths are measured on a canvas, so a long list costs one layout.
+/** @type {CanvasRenderingContext2D | null} */
+let measureCtx = null;
+/** @param {Iterable<HTMLElement>} els */
+export function fitMiddle(els) {
+  const list = [...els];
+  for (const el of list) if (el.dataset.full !== undefined && el.textContent !== el.dataset.full) el.textContent = el.dataset.full;
+  const over = [];
+  for (const el of list) {
+    const w = el.clientWidth;
+    if (w > 0 && el.scrollWidth > w + 1 && (el.textContent || '').length >= 8) over.push([el, w]);
+  }
+  if (!over.length) return;
+  measureCtx ||= document.createElement('canvas').getContext('2d');
+  const ctx = measureCtx;
+  const fonts = new Map();
+  for (const [el, w] of over) {
+    const full = el.textContent || '';
+    const font = fonts.get(el.className) || getComputedStyle(el).font;
+    fonts.set(el.className, font);
+    ctx.font = font;
+    const tail = Math.min(10, Math.ceil(full.length / 3));
+    const fits = k => ctx.measureText(`${full.slice(0, k)}…${full.slice(-tail)}`).width <= w;
+    let lo = 1, hi = full.length - tail - 1, best = 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (fits(mid)) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    el.dataset.full = full;
+    if (!el.title) el.title = full;
+    el.textContent = `${full.slice(0, best)}…${full.slice(-tail)}`;
+  }
+}
+
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {

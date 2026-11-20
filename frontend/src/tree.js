@@ -2,7 +2,7 @@
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
 import { api, state, reload, colorOf, effectiveLogin, effectiveJump, teamLibOf, isNewerType, runtime } from './api.js';
-import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC } from './ui.js';
+import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC, fitMiddle } from './ui.js';
 import { looksLikeAddress } from './switcher.js';
 import { showSidebar } from './activity.js';
 
@@ -153,6 +153,15 @@ export function initTree(h_) {
     if (act.kind === 'session') hooks.connect(act.node.id);
     else hooks.quickConnect(act.spec);
   });
+  // Names that do not fit lose their middle; again when the list's width
+  // changes (the sidebar is dragged, the list is zoomed).
+  let lastWidth = 0;
+  new ResizeObserver(() => {
+    if (tree.clientWidth === lastWidth) return;
+    lastWidth = tree.clientWidth;
+    fitMiddle(tree.querySelectorAll('.row .name'));
+  }).observe(tree);
+  window.addEventListener('treezoom', () => fitMiddle(tree.querySelectorAll('.row .name')));
   tree.addEventListener('contextmenu', e => {
     if (/** @type {Element} */ (e.target).closest('.row')) return;
     e.preventDefault();
@@ -395,6 +404,7 @@ export function render() {
     tree.append(h('div', { class: 'tree-empty', text: `No saved session matches “${filter}”. Enter connects to it as a new connection.` }));
   }
   if (clip?.cut) paintCut();
+  fitMiddle(tree.querySelectorAll('.row .name'));
   renderClusters();
 }
 

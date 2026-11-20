@@ -1484,3 +1484,15 @@ test('tabs keep their width and a long name is shortened in the middle, so its e
   expect(await page.locator('#tabbar').evaluate(b => b.scrollWidth > b.clientWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('a long name in the session list is shortened in the middle, again when the list gets wider', async ({ page }) => {
+  const name = 'cpt-c2960cx-access-floor-building-north-17';
+  const errors = await open(page, { nodes: [{ id: 's1', parentId: '', name, order: 0, session: { protocol: 'ssh', host: '192.0.2.1', port: 22 } }] });
+  const el = page.locator('#tree .row .name').first();
+  await expect(el).toHaveText(/^cpt-c2960cx.*….*north-17$/);
+  expect(await el.getAttribute('title')).toBe(name);
+  await page.locator('#sidebar').evaluate(s => { s.style.width = '700px'; s.style.maxWidth = '700px'; s.style.flex = '0 0 700px'; });
+  await page.evaluate(() => { const r = document.querySelector('.app') || document.body; r.style.gridTemplateColumns = 'auto 700px 1fr'; });
+  await expect(el).toHaveText(name);
+  expect(errors).toEqual([]);
+});

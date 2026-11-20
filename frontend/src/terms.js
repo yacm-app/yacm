@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { api, on, state, runtime, colorOf, reload, isNewerType, newerTypeText, saveSettings } from './api.js';
-import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC } from './ui.js';
+import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC, fitMiddle } from './ui.js';
 import { Highlighter, compileAlerts, stripAnsi } from './highlight.js';
 import { zoomTree, inSidebar, applyTreeZoom } from './treezoom.js';
 import { openPalette, editLibrary } from './snippets.js';
@@ -1373,25 +1373,9 @@ function renderTabbar() {
   }
 }
 
-// fitTitles shortens a tab name that does not fit in the middle, so that
-// its end stays readable: sessions are often named alike up to a number at
-// the end (cpt-c2960cx-01, cpt-c2960cx-02). Tabs keep their width and the
-// bar scrolls instead of squeezing them.
-function fitTitles(bar) {
-  for (const el of /** @type {NodeListOf<HTMLElement>} */ (bar.querySelectorAll('.tab .title'))) {
-    const full = el.textContent || '';
-    if (el.scrollWidth <= el.clientWidth + 1 || full.length < 8) continue;
-    el.title = full;
-    const tail = Math.min(10, Math.ceil(full.length / 3));
-    let lo = 1, hi = full.length - tail - 1, best = 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      el.textContent = `${full.slice(0, mid)}…${full.slice(-tail)}`;
-      if (el.scrollWidth <= el.clientWidth + 1) { best = mid; lo = mid + 1; } else hi = mid - 1;
-    }
-    el.textContent = `${full.slice(0, best)}…${full.slice(-tail)}`;
-  }
-}
+// fitTitles: tabs keep their width and the bar scrolls instead of
+// squeezing them; a name that still does not fit loses its middle.
+function fitTitles(bar) { fitMiddle(bar.querySelectorAll('.tab .title')); }
 
 // The mouse wheel over the tab bar moves it left and right (a touchpad's
 // sideways swipe already does).
