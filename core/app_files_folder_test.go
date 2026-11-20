@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,6 +18,9 @@ import (
 // sftpTestConn opens the files of a pretend Linux server with SFTP.
 func sftpTestConn(t *testing.T) (*App, *xferEvents, FilesInfo, string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the pretend Linux server takes Unix paths only")
+	}
 	a, x := fileTestApp(t)
 	port, fs := startFakeDeviceWith(t, "srv1", func(s *fakedevice.Server) { s.SFTP = true })
 	n, err := a.SaveNode(store.Node{Name: "srv1", Session: &store.Session{Protocol: store.ProtoSSH, Host: "127.0.0.1", Port: port, User: "admin", Auth: store.AuthPassword}},
