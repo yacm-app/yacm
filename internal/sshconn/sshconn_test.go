@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +39,10 @@ type testServer struct {
 	mu      sync.Mutex
 	windows [][2]int // window-change requests (cols, rows)
 	authed  []string // methods that succeeded
+	// silent: keepalive requests are never answered (a peer that hangs);
+	// held counts them.
+	silent bool
+	held   int
 }
 
 func newSigner(t *testing.T) ssh.Signer {
@@ -82,7 +87,17 @@ func (ts *testServer) serve(nc net.Conn, cfg *ssh.ServerConfig, forward bool) {
 		ts.authed = append(ts.authed, sc.Permissions.Extensions["method"])
 		ts.mu.Unlock()
 	}
-	go ssh.DiscardRequests(reqs)
+	if ts.silent {
+		go func() {
+			for range reqs {
+				ts.mu.Lock()
+				ts.held++
+				ts.mu.Unlock()
+			}
+		}()
+	} else {
+		go ssh.DiscardRequests(reqs)
+	}
 	for nch := range chans {
 		switch nch.ChannelType() {
 		case "session":
@@ -698,5 +713,42 @@ func TestUnreadableKnownHostsLine(t *testing.T) {
 	}
 	if !strings.Contains(warned, "line 2") {
 		t.Fatalf("warning %q", warned)
+	}
+}
+
+// A peer that stops answering: one keepalive waits at a time, and the
+// connection closes after three intervals without an answer.
+func TestKeepAliveOnePendingRequest(t *testing.T) {
+	hk := newSigner(t)
+	srv := startServer(t, passwordServer(t, hk, "s3cret"), false)
+	srv.silent = true
+	kh := NewKnownHosts(filepath.Join(t.TempDir(), "known_hosts"), false)
+	pr := &fakePrompter{acceptKey: true, answers: []string{"s3cret"}}
+	c, err := Dial(context.Background(), Config{
+		Hops:       []Hop{{Host: srv.host, Port: srv.port, User: "admin", Auth: store.AuthPassword, PasswordKey: "pw"}},
+		KnownHosts: kh, Prompter: pr, KeepAlive: 40 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	most := 0
+	deadline := time.After(3 * time.Second)
+	for done := false; !done; {
+		select {
+		case <-c.done:
+			done = true
+		case <-deadline:
+			t.Fatal("not closed after the peer stopped answering")
+		case <-time.After(5 * time.Millisecond):
+			var b strings.Builder
+			pprof.Lookup("goroutine").WriteTo(&b, 1)
+			most = max(most, strings.Count(b.String(), "(*Conn).keepAlive.func"))
+		}
+	}
+	srv.mu.Lock()
+	held := srv.held
+	srv.mu.Unlock()
+	if held != 1 || most > 1 {
+		t.Fatalf("%d keepalive requests reached the peer, up to %d waiting at once", held, most)
 	}
 }

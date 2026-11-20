@@ -802,35 +802,39 @@ func (c *Conn) keepAlive(every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	misses := 0
+	// One request at a time: while the peer has not answered, each tick
+	// counts as a miss instead of sending another request (whose goroutine
+	// would wait too).
+	var pending chan error
 	for {
 		select {
 		case <-c.done:
 			return
-		case <-t.C:
-			c.closeMu.Lock()
-			target := c.clients[len(c.clients)-1]
-			c.closeMu.Unlock()
-			errc := make(chan error, 1)
-			go func() {
-				_, _, err := target.SendRequest("keepalive@openssh.com", true, nil)
-				errc <- err
-			}()
-			select {
-			case err := <-errc:
-				if err != nil {
-					misses++
-				} else {
-					misses = 0
-				}
-			case <-time.After(every):
+		case err := <-pending:
+			pending = nil
+			if err != nil {
 				misses++
-			case <-c.done:
-				return
+			} else {
+				misses = 0
 			}
-			if misses >= 3 {
-				c.Close()
-				return
+		case <-t.C:
+			if pending != nil {
+				misses++
+			} else {
+				c.closeMu.Lock()
+				target := c.clients[len(c.clients)-1]
+				c.closeMu.Unlock()
+				errc := make(chan error, 1)
+				go func() {
+					_, _, err := target.SendRequest("keepalive@openssh.com", true, nil)
+					errc <- err
+				}()
+				pending = errc
 			}
+		}
+		if misses >= 3 {
+			c.Close()
+			return
 		}
 	}
 }

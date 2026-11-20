@@ -274,6 +274,16 @@ jobs:
           output-file: out/yacm-${{ needs.plan.outputs.version }}-sbom.spdx.json
           upload-artifact: false
           upload-release-assets: false
+      # go-toast is replaced by a stand-in (third_party/go-toast-stub: the
+      # same API, none of the original's code), so the SBOM says so and
+      # carries no package URL of the original for scanners to match.
+      - name: SBOM entry for the go-toast stand-in
+        env:
+          SBOM: out/yacm-${{ needs.plan.outputs.version }}-sbom.spdx.json
+        run: |
+          jq '(.packages[] | select(.name | test("go-toast"))) |= (.versionInfo = "0.0.0-yacm-stub" | .downloadLocation = "NOASSERTION" | .licenseDeclared = "GPL-3.0-or-later" | .comment = "Stand-in for git.sr.ht/~jackmordaunt/go-toast/v2 in third_party/go-toast-stub of this repository: the same API, no code of the original module." | del(.externalRefs))' "$SBOM" > sbom.tmp
+          mv sbom.tmp "$SBOM"
+          jq -e '[.packages[] | select(.name | test("go-toast"))] | length > 0' "$SBOM" >/dev/null || echo "::warning::no go-toast entry found in the SBOM"
       - name: Checksums
         run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       # Build provenance (SLSA) for every file: who built it, from which
