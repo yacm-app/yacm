@@ -1599,3 +1599,20 @@ test('a .yacm file: all settings only for your own export, your profiles only wh
   expect([opts.applySettings, opts.allSettings, opts.useMyProfiles]).toEqual([true, true, false]);
   expect(errors).toEqual([]);
 });
+
+test('the tab menu closes all tabs, asking once while sessions are connected', async ({ page }) => {
+  const errors = await open(page);
+  await connectTabs(page, ['core-sw1', 'core-sw2']);
+  await page.locator('#tabbar .tab').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Close all tabs' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Close 2 tabs?' });
+  await expect(dlg).toContainText('2 sessions are still connected');
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#tabbar .tab')).toHaveCount(2);
+  await page.locator('#tabbar .tab').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Close all tabs' }).click();
+  await page.getByRole('dialog', { name: 'Close 2 tabs?' }).getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('#tabbar .tab')).toHaveCount(0);
+  expect((await calls(page, 'CloseTab')).length).toBe(2);
+  expect(errors).toEqual([]);
+});

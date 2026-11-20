@@ -1338,7 +1338,8 @@ function renderTabbar() {
             : { label: panes > 1 && view.panes.includes(id) ? 'Remove from split view' : 'Show in the selected pane', action: () => (view.panes.includes(id) ? unpane(id) : activate(id)) },
           ...moveItems(id),
           '-',
-          { label: 'Close other tabs', action: () => order.filter(x => x !== id).forEach(closeTab) },
+          { label: 'Close other tabs', action: () => closeMany(order.filter(x => x !== id)), disabled: order.length < 2 },
+        { label: 'Close all tabs', action: () => closeMany([...order]) },
           { label: 'Close tab', key: KEY.close, action: () => requestClose(id) },
         ]);
         return;
@@ -1361,7 +1362,8 @@ function renderTabbar() {
         ...moveItems(id),
         state.settings.tabActivity === 'off' ? null : { label: t.noActivity ? 'Mark new output in this tab' : 'Do not mark new output in this tab', action: () => { t.noActivity = !t.noActivity; t.activity = false; renderTabbar(); }, title: 'The tab name turns red when output arrives while the tab is not on screen (Settings > Appearance)' },
         '-',
-        { label: 'Close other tabs', action: () => order.filter(x => x !== id).forEach(closeTab) },
+        { label: 'Close other tabs', action: () => closeMany(order.filter(x => x !== id)), disabled: order.length < 2 },
+        { label: 'Close all tabs', action: () => closeMany([...order]) },
         { label: 'Close tab', key: KEY.close, action: () => requestClose(id) },
       ].filter(Boolean));
     });
@@ -1425,6 +1427,20 @@ function breakItem(t) {
 function isBreakKey(e) {
   if (IS_MAC) return e.metaKey && !e.ctrlKey && !e.altKey && e.key === '.';
   return e.ctrlKey && !e.altKey && !e.metaKey && (e.code === 'Pause' || e.key === 'Cancel' || e.key === 'Pause');
+}
+
+// closeMany closes several tabs, asking once when sessions in them are
+// still connected or transfers still run.
+async function closeMany(ids) {
+  const list = ids.map(id => tabs.get(id)).filter(Boolean);
+  const connected = list.filter(t => isTerm(t) && t.state === 'connected').length;
+  const busy = list.filter(t => !isTerm(t) && t.busy?.()).length;
+  if (connected || busy) {
+    const why = [connected ? `${plural(connected, 'session is', 'sessions are')} still connected` : '', busy ? `${plural(busy, 'Files tab is', 'Files tabs are')} still copying` : ''].filter(Boolean).join(', ');
+    const ok = await confirmDialog({ title: `Close ${plural(list.length, 'tab', 'tabs')}?`, message: `${why[0].toUpperCase()}${why.slice(1)}.`, ok: 'Close', danger: true });
+    if (!ok) return;
+  }
+  for (const t of list) closeTab(t.id);
 }
 
 async function requestClose(id) {
