@@ -1535,3 +1535,48 @@ test('a long name in the session list is shortened in the middle, again when the
   await expect(el).toHaveText(name);
   expect(errors).toEqual([]);
 });
+
+test('the lock screen guards open sessions as the setting says', async ({ page }) => {
+  // Stay usable: Continue without passwords, as before.
+  let errors = await open(page);
+  await connectTabs(page, ['core-sw1']);
+  await page.locator('#btn-lock').click();
+  const lock = page.getByRole('dialog', { name: 'YACM is locked' });
+  await expect(lock).toBeVisible();
+  await lock.getByRole('button', { name: 'Continue without passwords' }).click();
+  await expect(lock).toHaveCount(0);
+  await expect(page.locator('#tabbar .tab')).toHaveCount(1);
+  expect(errors).toEqual([]);
+
+  // Need the master password: no way past it, and no keys reach what is behind.
+  errors = await open(page, { settings: { lockSessions: 'require' } });
+  await connectTabs(page, ['core-sw1']);
+  await page.locator('#btn-lock').click();
+  await expect(lock).toContainText('enter your master password to go on');
+  await expect(lock.getByRole('button', { name: /Continue|Close sessions/ })).toHaveCount(0);
+  await page.keyboard.press('Control+Shift+O');
+  await expect(page.getByLabel('Find a session', { exact: true })).toHaveCount(0);
+  await expect(lock.getByLabel('Master password')).toBeFocused();
+  await lock.getByLabel('Master password').fill('master-password-1');
+  await page.keyboard.press('Enter');
+  await expect(lock).toHaveCount(0);
+  expect((await calls(page, 'UnlockVault')).map(c => c.args[0])).toEqual(['master-password-1']);
+  await expect(page.locator('#tabbar .tab')).toHaveCount(1);
+  expect(errors).toEqual([]);
+
+  // Close: going on without the password closes the sessions, after asking.
+  errors = await open(page, { settings: { lockSessions: 'close' } });
+  await connectTabs(page, ['core-sw1', 'core-sw2']);
+  await page.locator('#btn-lock').click();
+  await lock.getByRole('button', { name: 'Close sessions and continue' }).click();
+  await lock.getByRole('button', { name: 'Back' }).click();
+  await lock.getByRole('button', { name: 'Close sessions and continue' }).click();
+  await lock.getByRole('button', { name: 'Close sessions', exact: true }).click();
+  await expect(lock).toHaveCount(0);
+  await expect(page.locator('#tabbar .tab')).toHaveCount(0);
+  expect((await calls(page, 'CloseTab')).length).toBe(2);
+  // Without open sessions the screen offers Continue as usual.
+  await page.locator('#btn-lock').click();
+  await expect(lock.getByRole('button', { name: 'Continue without passwords' })).toBeVisible();
+  expect(errors).toEqual([]);
+});

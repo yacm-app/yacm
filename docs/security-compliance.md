@@ -58,8 +58,13 @@ SCP) and tunnels listen only while the user switches them on.
 - New master passwords and export passwords must have at least 12
   characters.
 - The vault **locks after 15 idle minutes** by default (configurable) and
-  when YACM closes. This locks the saved passwords; sessions that are open
-  stay connected, so the computer's own screen lock protects them. Showing a
+  when YACM closes. This locks the saved passwords and covers the open
+  sessions; they stay connected. By default *Continue without passwords*
+  makes them usable again, so the computer's own screen lock protects them.
+  With *While YACM is locked, open sessions: Need the master password to go
+  on* (Settings > Security) only the master password opens them again; with
+  *Are closed if you go on without the master password* going on without it
+  closes them. Showing a
   stored password or exporting with passwords asks for the master password
   again; this guards against someone looking over your shoulder, not against
   someone using the unlocked window (a saved command with `<PASS>` sends the
@@ -165,7 +170,7 @@ replace the organisation's own controls.
 | Control | How YACM helps |
 |---|---|
 | 5.15 Access control, 5.18 Access rights | Credential profiles per person; team libraries without shared secrets. |
-| 5.17 Authentication information | Encrypted vault, 12-character minimum, auto-lock of saved passwords, secrets never in configuration files or libraries. |
+| 5.17 Authentication information | Encrypted vault, 12-character minimum, auto-lock of saved passwords (and of open sessions, when set), secrets never in configuration files or libraries. |
 | 8.2 Privileged access rights | Enable passwords and automation values kept in the vault and hidden in logs. |
 | 8.5 Secure authentication | Host key verification, SSH keys and certificates, modern algorithms by default. |
 | 8.15 Logging | Session logs with timestamps and change numbers; application log. |
@@ -179,7 +184,7 @@ replace the organisation's own controls.
 | Requirement | How YACM helps |
 |---|---|
 | 2.2.7 Non-console administrative access is encrypted | SSH with strong cryptography; telnet only where the user chooses it. |
-| 8.2.8 Re-authenticate after 15 minutes idle | Saved passwords lock after 15 idle minutes by default; open sessions rely on the operating system's screen lock. |
+| 8.2.8 Re-authenticate after 15 minutes idle | Saved passwords lock after 15 idle minutes by default. Open sessions need the master password again when *While YACM is locked, open sessions* is set to *Need the master password to go on* (or *Are closed…*); with the default they rely on the operating system's screen lock. |
 | 8.3.2 Strong cryptography for authentication factors in transmission and storage | Vault encryption, SSH. |
 | 8.3.6 Passwords at least 12 characters | Minimum for the master and export passwords. |
 | 10.2 Audit logs | Session logs with timestamps (to be kept by the organisation's log management). |

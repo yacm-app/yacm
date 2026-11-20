@@ -169,13 +169,14 @@ export function openDialog({ title, sub, body, buttons = [], wide = false, mediu
 
 // Escape closes the top dialog even when the keyboard focus is outside it.
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || !openDialogs.length) return;
+  if (e.key !== 'Escape' || !openDialogs.length || document.querySelector('body > .lock')) return;
   if (/** @type {Element} */ (e.target).closest?.('.dialog, .menu')) return;
   e.preventDefault();
   openDialogs[openDialogs.length - 1].close();
 });
 
-export function anyDialogOpen() { return openDialogs.length > 0; }
+// anyDialogOpen: shortcuts wait while a dialog or the lock screen is open.
+export function anyDialogOpen() { return openDialogs.length > 0 || !!document.querySelector('body > .lock'); }
 
 /** @param {{ title: string, message: any, ok?: string, danger?: boolean, cancel?: string }} opts @returns {Promise<boolean>} */
 export function confirmDialog({ title, message, ok = 'OK', danger = false, cancel = 'Cancel' }) {

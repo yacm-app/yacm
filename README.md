@@ -166,7 +166,8 @@ hardware, get the separate demo download for your system
 ### Security and your data
 
 - **Encrypted vault** (Argon2id and AES-256-GCM) that locks after 15 idle
-  minutes; `sessions.json` and team libraries never hold secrets.
+  minutes, and can lock the open sessions with it; `sessions.json` and team
+  libraries never hold secrets.
 - **Secrets masked** in session logs, **no telemetry**, an update check that
   stays off unless you switch it on, and tunnels from other people's files switched off.
 - **Your data folder anywhere**: another disk, a synced folder or a share,

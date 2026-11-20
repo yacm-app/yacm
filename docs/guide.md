@@ -90,7 +90,11 @@ Hovering shows each label.
   [Security model](#security-model)). It locks after 15 idle minutes by
   default (Settings > Security) and when YACM closes; the padlock on the left
   edge shows its state. Showing a stored password asks for the master
-  password again.
+  password again. The lock screen covers the open sessions and takes no
+  keys for them; *While YACM is locked, open sessions* sets what happens
+  next: they stay usable (*Continue without passwords*, the default), they
+  need the master password, or going on without it closes them. Sessions
+  stay connected while YACM is locked.
 - **Login automation**: ordered wait-for/send rules with regular
   expressions, per-rule timeouts, *stop* or *skip* on timeout, hidden values
   kept in the vault, and the tokens `<USER> <PASS> <HOST> <PORT> <NAME>`. A

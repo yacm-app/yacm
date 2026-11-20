@@ -215,6 +215,9 @@ export async function openSettings(onApply, startTab) {
 
   // ---- Security ----
   const lock = h('input', { type: 'number', min: 0, max: 600, value: st.autoLockMinutes || 0, on: { input: e => (st.autoLockMinutes = +e.target.value) } });
+  const lockSessions = h('select', { on: { change: e => (st.lockSessions = e.target.value) } },
+    ...[['', 'Stay usable (Continue without passwords)'], ['require', 'Need the master password to go on'], ['close', 'Are closed if you go on without the master password']]
+      .map(([v, t]) => h('option', { value: v, text: t, selected: (st.lockSessions || '') === v })));
   const oldPw = h('input', { type: 'password', autocomplete: 'off' });
   const newPw = h('input', { type: 'password', autocomplete: 'new-password' });
   const newPw2 = h('input', { type: 'password', autocomplete: 'new-password' });
@@ -222,6 +225,8 @@ export async function openSettings(onApply, startTab) {
   const security = () => [
     h('h3', { text: 'Vault' }),
     field('Lock the vault after this many idle minutes (0 = never)', lock),
+    field('While YACM is locked, open sessions', lockSessions,
+      'Locking also hides the sessions and stops typing into them. With the second and third choice a session left open is not usable without the master password; sessions stay connected (anti-idle goes on) while YACM is locked.'),
     h('h3', { text: 'Change master password', style: { marginTop: '16px' } }),
     field('Current master password', oldPw), h('div', { class: 'grid2' }, field('New master password', newPw), field('Repeat new password', newPw2)),
     h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } },
@@ -454,26 +459,49 @@ const logoSVG = () => {
 };
 
 // Lock / first-run screen. Resolves when the user is through. idle: shown by
-// the auto-lock, which locks saved passwords, not the open sessions.
-export function lockScreen({ idle = false } = {}) {
+// the auto-lock. guard: what it means for open sessions (Settings >
+// Security): '' they stay usable without the password, 'require' only the
+// master password goes on, 'close' going on without it closes them
+// (closeSessions). Nothing behind the screen takes keys while it is shown.
+/** @param {{ idle?: boolean, guard?: string, closeSessions?: () => void }} [opts] */
+export function lockScreen({ idle = false, guard = '', closeSessions = () => {} } = {}) {
   return new Promise(resolve => {
     const creating = !state.vault.exists;
+    if (creating) guard = '';
     const pw = h('input', { type: 'password', autocomplete: creating ? 'new-password' : 'current-password' });
     const pw2 = h('input', { type: 'password', autocomplete: 'new-password' });
     const err = h('div', { class: 'error-line', role: 'alert' });
     const go = h('button', { class: 'btn primary', text: creating ? 'Create vault' : 'Unlock' });
-    const skip = h('button', { class: 'text-btn skip', text: creating ? 'Set up later' : 'Continue without passwords' });
-    const el = h('div', { class: 'lock' },
+    const skip = guard === 'require' ? null
+      : h('button', { class: 'text-btn skip', text: creating ? 'Set up later' : guard === 'close' ? 'Close sessions and continue' : 'Continue without passwords' });
+    const text = creating
+      ? 'Choose a master password. It encrypts every saved password and passphrase (Argon2id and AES-256-GCM) and is never stored anywhere. If you lose it, the saved passwords cannot be recovered.'
+      : guard === 'require'
+        ? `YACM was locked${idle ? ' after inactivity' : ''}. Open sessions stay connected; enter your master password to go on.`
+        : guard === 'close'
+          ? `YACM was locked${idle ? ' after inactivity' : ''}. Open sessions stay connected; enter your master password to go on with them, or close them and continue without saved passwords.`
+          : idle
+            ? 'Saved passwords were locked after inactivity. Open sessions stay connected: lock your computer\'s screen when you leave it. Enter your master password to unlock saved passwords.'
+            : 'Enter your master password to unlock saved passwords.';
+    const actions = h('div', { class: 'actions' }, go, skip);
+    const el = h('div', { class: 'lock', role: 'dialog', 'aria-modal': 'true', 'aria-label': creating ? 'Create the vault' : 'YACM is locked' },
       h('h1', {}, logoSVG(), h('span', {}, 'YACM', h('small', { text: 'Yet Another Connection Manager' }))),
-      h('p', { text: creating
-        ? 'Choose a master password. It encrypts every saved password and passphrase (Argon2id and AES-256-GCM) and is never stored anywhere. If you lose it, the saved passwords cannot be recovered.'
-        : idle
-          ? 'Saved passwords were locked after inactivity. Open sessions stay connected: lock your computer\'s screen when you leave it. Enter your master password to unlock saved passwords.'
-          : 'Enter your master password to unlock saved passwords.' }),
+      h('p', { text }),
       field(creating ? 'Master password (at least 12 characters)' : 'Master password', pw),
       creating ? field('Repeat master password', pw2) : null,
       err,
-      h('div', { class: 'actions' }, go, skip));
+      actions);
+    // Keys go nowhere but this screen: not to a terminal, Type to many,
+    // saved commands or shortcuts behind it.
+    const keep = e => { if (!el.contains(/** @type {Node} */ (e.target))) { e.stopImmediatePropagation(); e.preventDefault(); } };
+    const blocked = ['keydown', 'keypress', 'keyup', 'paste', 'drop'];
+    blocked.forEach(t => window.addEventListener(t, keep, true));
+    const done = ok => { blocked.forEach(t => window.removeEventListener(t, keep, true)); el.remove(); resolve(ok); };
+    const refocus = () => { if (el.isConnected && !el.contains(document.activeElement)) pw.focus(); };
+    window.addEventListener('focus', refocus);
+    document.addEventListener('focusin', refocus);
+    // A click beside the fields keeps the keyboard in them.
+    el.addEventListener('mousedown', e => { if (!/** @type {Element} */ (e.target).closest('input, button, a')) e.preventDefault(); });
     const submit = async () => {
       err.textContent = '';
       go.disabled = true;
@@ -486,16 +514,27 @@ export function lockScreen({ idle = false } = {}) {
         }
         state.vault = await api.GetVaultStatus();
         await reload().catch(() => {}); // profiles now show which passwords are stored
-        el.remove();
-        resolve(true);
+        window.removeEventListener('focus', refocus);
+        document.removeEventListener('focusin', refocus);
+        done(true);
       } catch (e) {
         err.textContent = errMsg(e);
         pw.select();
       } finally { go.disabled = false; }
     };
     go.addEventListener('click', submit);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-    skip.addEventListener('click', () => { el.remove(); resolve(false); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' && /** @type {HTMLElement} */ (e.target).tagName === 'INPUT') submit(); });
+    const leave = () => { window.removeEventListener('focus', refocus); document.removeEventListener('focusin', refocus); done(false); };
+    skip?.addEventListener('click', () => {
+      if (guard !== 'close') { leave(); return; }
+      // Asked here: a dialog would open behind this screen.
+      const yes = h('button', { class: 'btn danger', text: 'Close sessions' });
+      const back = h('button', { class: 'text-btn', text: 'Back' });
+      actions.replaceChildren(h('span', { class: 'hint', text: 'Close all open sessions?' }), yes, back);
+      yes.addEventListener('click', () => { closeSessions(); leave(); });
+      back.addEventListener('click', () => { actions.replaceChildren(go, skip); pw.focus(); });
+      yes.focus();
+    });
     document.body.append(el);
     pw.focus();
   });

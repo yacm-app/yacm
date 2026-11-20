@@ -395,6 +395,11 @@ type Settings struct {
 	// LogSecretsInClear turns off hiding passwords and keys in session logs.
 	LogSecretsInClear bool `json:"logSecretsInClear,omitempty"`
 	AutoLockMinutes   int  `json:"autoLockMinutes"`
+	// LockSessions: what the locked vault means for open sessions. "" (they
+	// stay usable: Continue without passwords), "require" (the master
+	// password is needed to go on while a session is open), "close" (going on
+	// without it closes the open sessions).
+	LockSessions string `json:"lockSessions,omitempty"`
 
 	SidebarWidth   int              `json:"sidebarWidth,omitempty"`
 	SidebarHidden  bool             `json:"sidebarHidden,omitempty"` // session list folded away (the Sessions icon)

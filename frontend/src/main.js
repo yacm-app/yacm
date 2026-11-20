@@ -6,7 +6,7 @@ import { api, on, state, reload, saveSettings, runtime } from './api.js';
 import { initTree, render as renderTree } from './tree.js';
 import { atStart } from './guide.js';
 import { initUpdates } from './updates.js';
-import { initTerms, openSession, openQuick, openMany, applySettings, restoreTabs } from './terms.js';
+import { initTerms, openSession, openQuick, openMany, applySettings, restoreTabs, hasTabs, closeAllTabs } from './terms.js';
 import { initTreeZoom } from './treezoom.js';
 import { initPrompts } from './prompts.js';
 import { initFiles, openFiles } from './files.js';
@@ -88,12 +88,16 @@ async function refreshLockButton() {
   b.setAttribute('aria-label', !exists ? 'Set up vault' : unlocked ? 'Lock' : 'Unlock');
 }
 
+// guardSessions: the lock screen also guards the open sessions when the
+// setting asks for it (Settings > Security).
+const guardSessions = () => ({ guard: hasTabs() && state.vault.exists ? state.settings.lockSessions || '' : '', closeSessions: closeAllTabs });
+
 async function lockOrUnlock() {
   if (state.vault.exists && state.vault.unlocked) {
     await api.LockVault();
     await refreshLockButton();
   }
-  await lockScreen();
+  await lockScreen(guardSessions());
   await refreshLockButton();
 }
 
@@ -108,7 +112,7 @@ function setupAutoLock() {
       await api.LockVault();
       await refreshLockButton();
       toast('The vault was locked after inactivity.');
-      await lockScreen({ idle: true });
+      await lockScreen({ idle: true, ...guardSessions() });
       await refreshLockButton();
     }
   }, 15000);

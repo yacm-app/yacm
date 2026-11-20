@@ -924,6 +924,11 @@ export function closeTab(id) {
   finishClose();
 }
 
+// closeAllTabs closes every tab (Close sessions on the lock screen).
+export function closeAllTabs() {
+  for (const id of [...order]) closeTab(id);
+}
+
 function finishClose() {
   renderTabbar();
   renderStatus();

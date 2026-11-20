@@ -4,8 +4,10 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,5 +58,31 @@ func TestSettingsWithFontSizeZero(t *testing.T) {
 	st := s.Settings()
 	if st.Theme != "light" || st.Scrollback != 2000 || st.FontSize != DefaultSettings().FontSize {
 		t.Fatalf("settings %+v", st)
+	}
+}
+
+// LockSessions is additive: a file without it keeps open sessions usable,
+// and the default is not written out.
+func TestLockSessionsSetting(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "sessions.json")
+	os.WriteFile(p, []byte(`{"version":2,"settings":{"theme":"dark","autoLockMinutes":15},"nodes":[]}`), 0o600)
+	s, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := s.Settings()
+	if st.LockSessions != "" {
+		t.Fatalf("default %q", st.LockSessions)
+	}
+	if b, _ := json.Marshal(st); strings.Contains(string(b), "lockSessions") {
+		t.Fatal("default written out")
+	}
+	st.LockSessions = "require"
+	if err := s.SetSettings(st); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(p)
+	if err != nil || s2.Settings().LockSessions != "require" {
+		t.Fatalf("reopened %q %v", s2.Settings().LockSessions, err)
 	}
 }
