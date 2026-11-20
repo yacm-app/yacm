@@ -26,9 +26,14 @@ import (
 //     that sends anything else ends that: later login answers are skipped;
 //   - nothing sends control characters (Ctrl-A, Ctrl-P and the like could
 //     move a typed password into a command line).
+//
+// sudo asks "[sudo] password for jsmith:", which ends with the user name:
+// a rule can wait for "password for <USER>:", where <USER> is the linked
+// login's user name.
 
 var (
 	passPromptEnd = regexp.MustCompile(`(?i)(?:pass(?:word|code|phrase)?|assword|word|pin|secret|token|otp|code|lozinka|lozinku)\s*:\s*$`)
+	sudoPromptEnd = regexp.MustCompile(`(?i)password for <USER>\s*:\s*$`)
 	userPromptEnd = regexp.MustCompile(`(?i)(?:user(?: ?name)?|sername|login|ogin|account|name|korisnik|korisničko ime)\s*:\s*$`)
 	// Commands that keep a login chain harmless: they cannot open a
 	// connection elsewhere.
@@ -83,12 +88,16 @@ func loginAnswerOK(r store.ExpectRule) bool {
 	// Plain text that ends like a login prompt; buildRules matches it as
 	// plain text, so a regular expression cannot reach the command line.
 	text := loginPromptText(r.Expect)
+	if r.Send == "<PASS>" && sudoPromptEnd.MatchString(text) {
+		end = sudoPromptEnd
+	}
 	// A regular expression left after that would be matched as plain text
 	// and never fire, so it is refused (and reported) instead.
-	if !end.MatchString(text) || strings.ContainsAny(text, "#>$\\*+?|^[]{}") || hasControl(text, false) {
+	plain := strings.ReplaceAll(text, "<USER>", "user")
+	if !end.MatchString(text) || strings.ContainsAny(plain, "#<>$\\*+?|^[]{}") || hasControl(text, false) {
 		return false
 	}
-	re := teamLoginPattern(r.Expect)
+	re := teamLoginPattern(r.Expect, "user")
 	for _, p := range cliPrompts {
 		if re.MatchString(p) {
 			return false
@@ -101,8 +110,10 @@ func loginAnswerOK(r store.ExpectRule) bool {
 // prompt as plain text at the very end of the output (with the engine's
 // Quiet wait, see teamLoginQuiet), so the same words in a banner, a log
 // line or a file on screen do not count.
-func teamLoginPattern(expectText string) *regexp.Regexp {
-	return regexp.MustCompile(`(?i)` + regexp.QuoteMeta(loginPromptText(expectText)) + `[ \t]*$`)
+// user stands for <USER> in the prompt (sudo's "password for <USER>:").
+func teamLoginPattern(expectText, user string) *regexp.Regexp {
+	q := strings.ReplaceAll(regexp.QuoteMeta(loginPromptText(expectText)), "<USER>", regexp.QuoteMeta(user))
+	return regexp.MustCompile(`(?i)` + q + `[ \t]*$`)
 }
 
 var (

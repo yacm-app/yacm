@@ -502,7 +502,7 @@ func (a *App) buildRules(t *tab) []expect.Rule {
 		label := r.Expect
 		if allowed != nil && usesLogin(r.Send) {
 			// A library's login answer waits for its prompt as plain text.
-			re = teamLoginPattern(r.Expect)
+			re = teamLoginPattern(r.Expect, a.resolveTokens(t, "<USER>"))
 		} else if strings.TrimSpace(r.Expect) == "" {
 			// No text to wait for: send at once (SecureCRT allows this too).
 			if r.Send == "" && !r.Hidden {

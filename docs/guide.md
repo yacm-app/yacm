@@ -346,7 +346,8 @@ and choose **Publish as team library…**; colleagues add the file under
   commands from a library never send `<PASS>` (and `<USER>` only as a line of
   its own). An automation rule from a library sends `<USER>` or `<PASS>` only
   as its whole answer with Enter, at a prompt written as plain text that ends
-  like a user name or password prompt (`Password:`, `Username:`, `word:`),
+  like a user name or password prompt (`Password:`, `Username:`, `word:`,
+  or `password for <USER>:` for sudo, where `<USER>` is your own user name),
   matched as plain text at the very end of the output after a moment of
   quiet (the same words in a banner, a log line or a file on screen do not
   count), and only while the rules before it sent
@@ -403,6 +404,8 @@ delete the folder (and a data folder you chose yourself, if any).
 - **Export and import** in YACM's own `.yacm` format, for backups, moving to
   another computer or sharing with colleagues; passwords only under a separate
   export password ([format](import-export.md#the-yacm-export-format)).
+  On a new computer, *It is my own export: take all settings* brings the
+  saved commands, team libraries, NetBox and security settings along too.
   *Leave out user names and logins* writes no user names, credential
   profiles, key files or passwords: for handing sessions to a colleague, who
   sets their own login afterwards.

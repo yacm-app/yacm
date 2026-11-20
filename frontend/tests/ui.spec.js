@@ -1580,3 +1580,22 @@ test('the lock screen guards open sessions as the setting says', async ({ page }
   await expect(lock.getByRole('button', { name: 'Continue without passwords' })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('a .yacm file: all settings only for your own export, your profiles only when allowed', async ({ page }) => {
+  const errors = await open(page, { chooseFile: '/home/user/backup.yacm', yacmInfo: {
+    app: 'YACM 1.1.0', exportedAt: '2026-11-01T10:00:00Z', groups: 1, sessions: 2, hasSecrets: false, settings: true, knownHosts: 0, existing: 0, localCommands: 0, profiles: 1,
+    myProfiles: ['core-r1 (198.51.100.1) with AD'],
+  } });
+  await page.locator('#btn-more').click();
+  await page.getByText('Import from a file…').click();
+  const dlg = page.getByRole('dialog', { name: 'Import backup.yacm' });
+  await expect(dlg).toContainText('core-r1 (198.51.100.1) with AD');
+  await expect(dlg.getByText('It is my own export: take all settings')).toBeHidden();
+  await dlg.getByText('Use the app settings from the file').click();
+  await dlg.getByText('It is my own export: take all settings').click();
+  await dlg.getByRole('button', { name: 'Import' }).click();
+  await expect.poll(async () => (await calls(page, 'ImportSessions')).length).toBe(1);
+  const opts = (await calls(page, 'ImportSessions'))[0].args[1];
+  expect([opts.applySettings, opts.allSettings, opts.useMyProfiles]).toEqual([true, true, false]);
+  expect(errors).toEqual([]);
+});

@@ -63,6 +63,12 @@ func TestTeamRulesAnswerOnlyLoginPrompts(t *testing.T) {
 		{"anchor in the middle", []store.ExpectRule{r("$|[Pp]assword:\\s*$", "<PASS>")}, []bool{false}},
 		{"other regex", []store.ExpectRule{r(".*password:\\s*$", "<PASS>"), r("(?i)password:", "<PASS>")}, []bool{false, false}},
 		{"plain text with brackets", []store.ExpectRule{r("Router (lab) password:", "<PASS>")}, []bool{true}},
+		// sudo ends its prompt with your user name.
+		{"sudo", []store.ExpectRule{r("Password:", "<PASS>"), r("$", "sudo -i"), r("password for <USER>:", "<PASS>")}, []bool{true, true, true}},
+		{"sudo, another user", []store.ExpectRule{r("password for root:", "<PASS>")}, []bool{false}},
+		{"sudo prompt with brackets", []store.ExpectRule{r("[sudo] password for <USER>:", "<PASS>")}, []bool{false}},
+		{"user at the sudo prompt", []store.ExpectRule{r("password for <USER>:", "<USER>")}, []bool{false}},
+		{"after a command", []store.ExpectRule{r("$", "ssh 198.51.100.7"), r("password for <USER>:", "<PASS>")}, []bool{true, false}},
 	}
 	for _, c := range cases {
 		got := teamRulesOK(c.rules)
@@ -231,9 +237,14 @@ func TestTeamRulesAtRunTime(t *testing.T) {
 		t.Fatal("the login prompt must end the output")
 	}
 	// The preset form waits for the same plain text, in either case.
-	pre := teamLoginPattern("[Pp]assword:\\s*$")
+	pre := teamLoginPattern("[Pp]assword:\\s*$", "colleague")
 	if !pre.MatchString("\r\nPassword: ") || !pre.MatchString("password:") || pre.MatchString("Password: was changed\r\nrouter#") || pre.MatchString("Password: x") {
 		t.Fatalf("preset pattern %s", pre)
+	}
+	// sudo's prompt: with the linked user's name, no one else's.
+	sudo := teamLoginPattern("password for <USER>:", "j.smith")
+	if !sudo.MatchString("\r\n[sudo] password for j.smith: ") || sudo.MatchString("[sudo] password for jxsmith: ") || sudo.MatchString("[sudo] password for root: ") {
+		t.Fatalf("sudo pattern %s", sudo)
 	}
 	// A name with control characters is refused, so <NAME> cannot bring them.
 	if err := store.Validate(&store.Node{Name: "r1\x10\x01copy run tftp://x/", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1"}}); err == nil {

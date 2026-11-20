@@ -464,3 +464,52 @@ func TestCredentialInfoJSON(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+// Your own export on a new computer: all settings come along, not only the
+// look; someone else's file gives only the look.
+func TestImportAllSettingsFromOwnExport(t *testing.T) {
+	a := newTestApp(t)
+	cred, err := a.SaveCredential(store.Credential{Name: "AD", User: "jsmith", Auth: store.AuthPassword}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := a.store.Settings()
+	st.Theme, st.NetBoxURL, st.AutoLockMinutes, st.LockSessions, st.DefaultLogDir = "light", "https://netbox.example.com", 5, "require", t.TempDir()
+	st.Snippets = []store.Snippet{{ID: "sn1", Name: "show ver", Text: "show version"}}
+	st.TeamLibraries = []store.TeamLibraryRef{{ID: "lib1", Path: filepath.Join(t.TempDir(), "lib.json"), Logins: map[string]string{"ad": cred.ID, "gone": "nope"}, Source: "g1", Revision: 3}}
+	if err := a.SaveSettings(st); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SaveNode(store.Node{Name: "r1", Session: &store.Session{Protocol: store.ProtoSSH, Host: "10.0.0.1", CredentialID: cred.ID}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "mine.yacm")
+	if _, err := a.ExportSessions(path, exchange.ExportOptions{IncludeSettings: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	look := newTestApp(t)
+	if _, err := look.ImportSessions(path, exchange.ImportOptions{Target: "root", OnConflict: "copy", ApplySettings: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := look.store.Settings(); got.Theme != "light" || got.NetBoxURL != "" || got.AutoLockMinutes != 15 || len(got.TeamLibraries) != 0 {
+		t.Fatalf("look only: %+v", got)
+	}
+
+	b := newTestApp(t)
+	rep, err := b.ImportSessions(path, exchange.ImportOptions{Target: "root", OnConflict: "copy", ApplySettings: true, AllSettings: true})
+	if err != nil || !rep.SettingsApplied {
+		t.Fatalf("%v %+v", err, rep)
+	}
+	got := b.store.Settings()
+	if got.Theme != "light" || got.NetBoxURL != "https://netbox.example.com" || got.AutoLockMinutes != 5 || got.LockSessions != "require" ||
+		got.DefaultLogDir != st.DefaultLogDir || len(got.Snippets) != 1 || got.Snippets[0].Text != "show version" {
+		t.Fatalf("all settings: %+v", got)
+	}
+	if len(got.TeamLibraries) != 1 || got.TeamLibraries[0].Source != "" || got.TeamLibraries[0].Revision != 0 {
+		t.Fatalf("team library %+v", got.TeamLibraries)
+	}
+	if l := got.TeamLibraries[0].Logins; len(l) != 1 || l["ad"] != cred.ID {
+		t.Fatalf("login links %v", l)
+	}
+}

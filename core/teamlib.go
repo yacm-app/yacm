@@ -244,6 +244,8 @@ type TeamLibraryStatus struct {
 	// NeedsNewer says why this YACM may use but not edit the library (it was
 	// published by a newer version); empty when it can be edited.
 	NeedsNewer string `json:"needsNewer,omitempty"`
+	// Skipped: sessions or groups left out of the library, with the reason.
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // teamStatusLocked describes a library; checkWrite tests whether its folder
@@ -265,6 +267,7 @@ func (a *App) teamStatusLocked(l *loadedLib, checkWrite bool) TeamLibraryStatus 
 		if newer, why := f.NeedsNewer(); newer {
 			st.NeedsNewer = why
 		}
+		st.Skipped = f.Skipped
 	} else {
 		st.Name = strings.TrimSuffix(filepath.Base(l.ref.Path), filepath.Ext(l.ref.Path))
 	}

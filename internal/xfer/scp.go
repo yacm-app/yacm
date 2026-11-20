@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -57,6 +58,16 @@ func newChannel(c *ssh.Client) (*ssh.Session, error) {
 	return nil, err
 }
 
+// startErr: a command that could not start because the connection closed
+// meanwhile (the channel had opened) is ErrConnClosed, so the link
+// reconnects and runs it again.
+func startErr(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return fmt.Errorf("%w: %v", ErrConnClosed, err)
+	}
+	return err
+}
+
 // Exec runs one command on its own channel and returns what it printed.
 func Exec(ctx context.Context, c *ssh.Client, cmd string, timeout time.Duration) (string, error) {
 	sess, err := newChannel(c)
@@ -69,7 +80,7 @@ func Exec(ctx context.Context, c *ssh.Client, cmd string, timeout time.Duration)
 	sess.Stderr = out
 	done := make(chan error, 1)
 	if err := sess.Start(cmd); err != nil {
-		return "", err
+		return "", startErr(err)
 	}
 	go func() { done <- sess.Wait() }()
 	t := time.NewTimer(timeout)
@@ -84,6 +95,13 @@ func Exec(ctx context.Context, c *ssh.Client, cmd string, timeout time.Duration)
 		return out.String(), fmt.Errorf("%q did not finish within %s", cmd, timeout)
 	}
 	text := strings.ReplaceAll(out.String(), "\r", "")
+	// The channel opened, then the device closed the connection before
+	// running the command (Cisco IOS closing after the previous one): no
+	// output, and the connection no longer answers.
+	var missing0 *ssh.ExitMissingError
+	if strings.TrimSpace(text) == "" && (errors.Is(err, io.EOF) || errors.As(err, &missing0)) && connGone(c) {
+		return "", fmt.Errorf("%w: %v", ErrConnClosed, err)
+	}
 	var exit *ssh.ExitError
 	if errors.As(err, &exit) || errors.Is(err, io.EOF) {
 		err = nil // devices often end exec channels without a clean status
@@ -378,7 +396,7 @@ func SCPGet(ctx context.Context, c *ssh.Client, p string, w io.Writer, progress 
 	var stderr lockedBuffer // written by the session while we read it
 	sess.Stderr = &stderr
 	if err := sess.Start("scp -f " + quoteSCP(p)); err != nil {
-		return err
+		return startErr(err)
 	}
 	r := bufio.NewReaderSize(outPipe, 64<<10)
 	// A device that refuses (Cisco IOS without its SCP server) may have
@@ -456,7 +474,7 @@ func SCPPut(ctx context.Context, c *ssh.Client, p string, src io.Reader, size in
 	var stderr lockedBuffer // written by the session while we read it
 	sess.Stderr = &stderr
 	if err := sess.Start("scp -t " + quoteSCP(p)); err != nil {
-		return err
+		return startErr(err)
 	}
 	r := bufio.NewReader(outPipe)
 	if err := scpAck(r); err != nil {
@@ -618,7 +636,7 @@ func ExecTo(ctx context.Context, c *ssh.Client, cmd string, w io.Writer, progres
 	errOut := &lockedBuffer{}
 	sess.Stderr = errOut
 	if err := sess.Start(cmd); err != nil {
-		return 0, err
+		return 0, startErr(err)
 	}
 	var idleTimer *time.Timer
 	var timedOut atomic.Bool

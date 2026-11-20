@@ -87,7 +87,7 @@ plain UTF-8 JSON:
 | `credentials` *(version 2)* | The credential profiles the exported sessions use (user name, login method, key path). Their passwords go into `secrets` like all others. |
 | `secrets` *(optional)* | Passwords, key passphrases and hidden automation values, encrypted with a separate **export password** (Argon2id + AES-256-GCM, same construction as the vault). Never written in clear text. |
 | `knownHosts` *(optional)* | Trusted host keys of the exported SSH sessions and their jump hosts, plus `@cert-authority` lines. Public data. On import only plain keys for the hosts of the sessions in the file are added (see below). |
-| `settings` *(optional)* | App settings (theme, font, scrollback, auto-lock, log folder). On import only the look is taken (theme, fonts, colours, highlighting, terminal habits). |
+| `settings` *(optional)* | App settings, saved commands and followed team libraries included. On import only the look is taken (theme, fonts, colours, highlighting, terminal habits), unless you tick *It is my own export: take all settings*. |
 
 On import YACM shows what the file contains and asks:
 
@@ -124,12 +124,19 @@ Safety rules on import (a file may come from someone else):
   paths that do not exist on this computer are listed in the report.
 - IDs are checked, and a reference to a credential profile that is not in the
   file, or that names one of your profiles with another name or user, is
-  dropped (the session asks for a login). Sessions and groups that will log
-  in with one of your existing profiles or groups are named in the report.
+  dropped (the session asks for a login). A file that carries one of your
+  own profiles (your own export, or a copy someone kept of it) names the
+  sessions that would log in with it before importing; they keep it only
+  when you tick *Let them log in with my profiles*. Sessions that join one
+  of your groups and take its login are named in the report.
 - In *Replace mine*, a session that now points to another address or through
   other jump hosts loses its saved passwords unless the file brings its own.
 - App settings from the file only change the look; your security settings,
-  saved commands and team libraries stay as they are.
+  saved commands and team libraries stay as they are. For your own export
+  on a new computer, *It is my own export: take all settings* takes all of
+  them (saved commands, team libraries, NetBox, log folder, security
+  settings); a team library keeps its login links to the profiles that came
+  along. Only tick it for a file you made yourself.
 
 Exporting with passwords needs your master password.
 

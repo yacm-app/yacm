@@ -59,7 +59,7 @@ export function exportDialog(nodeIds = null, after) {
       check('Include passwords, encrypted', withPw, state.vault.unlocked ? 'Saved passwords, key passphrases, hidden automation values and the passwords of the credential profiles the sessions use.' : 'Unlock the vault to export passwords.'),
       pwBox,
       check('Include trusted host keys', hosts, 'Public keys only, so the other computer recognises your devices without asking again.'),
-      check('Include app settings', settings, 'Theme, font, scrollback, auto-lock and log folder.')),
+      check('Include app settings', settings, 'All of them, saved commands and team libraries too. Importing takes only the look, or everything for your own export.')),
     buttons: [
       { label: 'Cancel' },
       { label: 'Choose file and export', kind: 'primary', default: true, onClick: async d => {
@@ -295,6 +295,14 @@ function importYacm(path, info, after) {
 
   const pw = h('input', { type: 'password', autocomplete: 'off' });
   const settings = h('input', { type: 'checkbox' });
+  const allSettings = h('input', { type: 'checkbox' });
+  // Off by default: a session in someone else's file that names one of your
+  // profiles (a copy they kept of your export) would log in with your account.
+  const myProfiles = h('input', { type: 'checkbox' });
+  const mine = i.myProfiles || [];
+  const allBox = check('It is my own export: take all settings', allSettings, 'Also saved commands, team libraries, NetBox, the log folder and the security settings, as on the computer it came from. Only for a file you made yourself.');
+  allBox.hidden = true;
+  settings.addEventListener('change', () => { allBox.hidden = !settings.checked; if (!settings.checked) allSettings.checked = false; });
   // Off by default: trusted keys from someone else's file decide which
   // servers you accept without a question.
   const hosts = h('input', { type: 'checkbox' });
@@ -313,6 +321,10 @@ function importYacm(path, info, after) {
         : h('p', { class: 'warning', text: 'The file contains encrypted passwords, but your vault is locked, so they will be skipped. Unlock the vault first to import them.' })) : null,
       i.knownHosts ? check(`Add ${plural(i.knownHosts, 'trusted host key', 'trusted host keys')}`, hosts, 'Only if you trust whoever made the file: YACM then connects to these hosts without asking. Only keys for the sessions in the file are added, and never one for a host you already trust.') : null,
       i.settings ? check('Use the app settings from the file', settings, 'Takes its theme, fonts, colours and highlighting. Your security settings, saved commands and team libraries stay as they are.') : null,
+      i.settings ? allBox : null,
+      mine.length ? h('div', { class: 'field' },
+        h('p', { class: 'warning', text: `${plural(mine.length, 'item logs', 'items log')} in with one of your own credential profiles: ${mine.slice(0, 5).join('; ')}${mine.length > 5 ? ` and ${mine.length - 5} more` : ''}.` }),
+        check('Let them log in with my profiles', myProfiles, 'Tick it for your own export. Otherwise they ask for a login, so a file someone made from a copy of your export cannot use your account.')) : null,
       i.localCommands ? h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: `${plural(i.localCommands, 'session command runs', 'session commands run')} on this computer before or after connecting. They will ask before running, because they come from a file.` }) : null),
     buttons: [
       { label: 'Cancel' },
@@ -320,7 +332,7 @@ function importYacm(path, info, after) {
         const rep = await api.ImportSessions(path, {
           target, groupName: groupName.value, onConflict: conflict,
           password: state.vault.unlocked ? pw.value : '',
-          applySettings: settings.checked, addKnownHosts: hosts.checked,
+          applySettings: settings.checked, allSettings: allSettings.checked, addKnownHosts: hosts.checked, useMyProfiles: myProfiles.checked,
         });
         await reload();
         after && after();
@@ -332,7 +344,7 @@ function importYacm(path, info, after) {
         const extra = [];
         if (rep.secrets) extra.push(`${plural(rep.secrets, 'password', 'passwords')} stored in the vault`);
         if (rep.knownHosts) extra.push(plural(rep.knownHosts, 'host key added', 'host keys added'));
-        if (rep.settingsApplied) extra.push('settings applied');
+        if (rep.settingsApplied) extra.push(allSettings.checked ? 'all settings applied' : 'settings applied');
         reportDialog(parts.length ? `Imported ${parts.join(', ')}` : 'Nothing imported', extra.length ? extra.join(', ') + '.' : '', rep);
       } },
     ],

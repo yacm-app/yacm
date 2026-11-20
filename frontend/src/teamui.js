@@ -126,6 +126,7 @@ function libraryCard(l, rerender) {
     h('div', { class: 'meta', text: meta }),
     h('code', { class: 'team-path', text: l.path }),
     l.error ? h('p', { class: 'warning', text: l.stale ? `The file cannot be read right now (${l.error}). Changes appear once it can be reached again.` : l.error }) : null,
+    l.skipped?.length ? h('p', { class: 'warning', text: `Left out: ${l.skipped.join('; ')}. Ask the person who publishes the library to correct ${l.skipped.length === 1 ? 'it' : 'them'}.` }) : null,
     l.description ? h('p', { class: 'hint', text: l.description }) : null,
     logins, actions);
 }

@@ -425,6 +425,43 @@ type Info struct {
 	Existing   int       `json:"existing"` // nodes whose ID already exists here
 	LocalCmds  int       `json:"localCommands"`
 	Profiles   int       `json:"profiles"` // credential profiles in the file
+	// MyProfiles names the sessions and groups that would log in with one
+	// of your own profiles (the file carries it with the same ID, name and
+	// user: your own export, or a copy someone kept of it).
+	MyProfiles []string `json:"myProfiles,omitempty"`
+}
+
+// UsesMyProfiles lists the sessions and groups in f that name one of your
+// profiles, as Inspect reports them.
+func UsesMyProfiles(f *File, existingCreds map[string]*store.Credential) []string {
+	fileCred := map[string]*store.Credential{}
+	for _, c := range f.Credentials {
+		fileCred[c.ID] = c
+	}
+	var out []string
+	for _, n := range f.Nodes {
+		if n == nil {
+			continue
+		}
+		for _, id := range *credRefs(n) {
+			c, mine := existingCreds[*id]
+			if fc := fileCred[*id]; mine && fc != nil && fc.Name == c.Name && fc.User == c.User {
+				out = append(out, mineLabel(n, c))
+				break
+			}
+		}
+	}
+	return out
+}
+
+func mineLabel(n *store.Node, c *store.Credential) string {
+	what := n.Name
+	if n.Session != nil {
+		what = fmt.Sprintf("%s (%s)", n.Name, n.Session.Host)
+	} else if n.IsGroup {
+		what = "group " + n.Name
+	}
+	return what + " with " + c.Name
 }
 
 // Inspect describes f relative to the current tree.
@@ -453,7 +490,15 @@ type ImportOptions struct {
 	OnConflict    string `json:"onConflict"` // "copy", "replace" or "skip"
 	Password      string `json:"password"`   // export password; empty = skip secrets
 	ApplySettings bool   `json:"applySettings"`
-	AddKnownHosts bool   `json:"addKnownHosts"`
+	// UseMyProfiles keeps the references to your own profiles that the file
+	// carries (Inspect's MyProfiles); without it they are dropped and those
+	// sessions ask for a login.
+	UseMyProfiles bool `json:"useMyProfiles,omitempty"`
+	// AllSettings (with ApplySettings): the file is your own export, so
+	// all its settings are taken, saved commands, team libraries, NetBox,
+	// log folder and security settings too (moving to a new computer).
+	AllSettings   bool `json:"allSettings,omitempty"`
+	AddKnownHosts bool `json:"addKnownHosts"`
 }
 
 // Skip records something that was not imported.
@@ -745,13 +790,12 @@ func PlanImport(f *File, existing map[string]*store.Node, existingCreds map[stri
 					*id = ""
 					continue
 				}
-				what := n.Name
-				if n.Session != nil {
-					what = fmt.Sprintf("%s (%s)", n.Name, n.Session.Host)
-				} else if n.IsGroup {
-					what = "group " + n.Name
+				if !opts.UseMyProfiles {
+					p.Report.Warnings = append(p.Report.Warnings, fmt.Sprintf("%s: it named your profile %s, which you did not allow, so it asks for a login now", n.Name, c.Name))
+					*id = ""
+					continue
 				}
-				p.Report.Warnings = append(p.Report.Warnings, fmt.Sprintf("%s logs in with your profile %s", what, c.Name))
+				p.Report.Warnings = append(p.Report.Warnings, fmt.Sprintf("%s logs in with your profile", mineLabel(n, c)))
 			}
 		}
 	}

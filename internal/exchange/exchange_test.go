@@ -409,3 +409,33 @@ func TestStripLogins(t *testing.T) {
 		t.Fatalf("profiles still exported: %v", got)
 	}
 }
+
+// A file that carries one of your profiles (your own export, or a copy
+// someone kept of it) names the sessions that would log in with it; they do
+// only when you allow it.
+func TestImportUsesMyProfilesOnlyWhenAllowed(t *testing.T) {
+	cred := &store.Credential{ID: "cred-ad", Name: "AD", User: "jsmith", Auth: store.AuthPassword}
+	n := &store.Node{ID: "evil", Name: "looks-like-core", Session: &store.Session{Protocol: store.ProtoSSH, Host: "203.0.113.9", Port: 22, CredentialID: "cred-ad"}}
+	f, err := Build("YACM test", []*store.Node{n}, []*store.Credential{cred}, "", nil, ExportOptions{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := map[string]*store.Credential{"cred-ad": cred}
+	if got := UsesMyProfiles(f, mine); len(got) != 1 || got[0] != "looks-like-core (203.0.113.9) with AD" {
+		t.Fatalf("my profiles %q", got)
+	}
+	if got := UsesMyProfiles(f, map[string]*store.Credential{}); len(got) != 0 {
+		t.Fatalf("on a new computer %q", got)
+	}
+	p, err := PlanImport(f, nil, mine, ImportOptions{Target: "root", OnConflict: "copy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Insert[0].Session.CredentialID != "" || !strings.Contains(strings.Join(p.Report.Warnings, "\n"), "which you did not allow") {
+		t.Fatalf("used your profile without asking: %+v %q", p.Insert[0].Session, p.Report.Warnings)
+	}
+	p, _ = PlanImport(f, nil, mine, ImportOptions{Target: "root", OnConflict: "copy", UseMyProfiles: true})
+	if p.Insert[0].Session.CredentialID != "cred-ad" {
+		t.Fatalf("allowed, but dropped: %+v", p.Insert[0].Session)
+	}
+}

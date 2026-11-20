@@ -81,3 +81,25 @@ func TestSaveLockAndRevision(t *testing.T) {
 		t.Fatalf("load %+v %v", got, err)
 	}
 }
+
+// One session that does not pass (a control character in its name) is left
+// out with the reason; the rest of the library loads, and the sessions of a
+// group left out move to the top.
+func TestParseSkipsBadEntries(t *testing.T) {
+	data := `{"format":"yacm-team-library","version":1,"name":"Lab","nodes":[
+	 {"id":"g1","isGroup":true,"name":"Core\u001b[2J"},
+	 {"id":"s1","parentId":"g1","name":"r1","session":{"protocol":"ssh","host":"10.0.0.1"}},
+	 {"id":"s2","name":"r2\u0007","session":{"protocol":"ssh","host":"10.0.0.2"}},
+	 {"id":"s3","name":"r3","session":{"protocol":"ssh","host":"10.0.0.3"}}
+	]}`
+	f, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Nodes) != 2 || f.Nodes[0].ID != "s1" || f.Nodes[0].ParentID != "" || f.Nodes[1].ID != "s3" {
+		t.Fatalf("nodes %+v", f.Nodes)
+	}
+	if len(f.Skipped) != 2 || !strings.HasPrefix(f.Skipped[0], "Core?[2J: ") || !strings.Contains(f.Skipped[1], "control characters") {
+		t.Fatalf("skipped %q", f.Skipped)
+	}
+}

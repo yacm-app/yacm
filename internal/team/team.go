@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yacm-app/yacm/internal/jsonx"
 	"github.com/yacm-app/yacm/internal/store"
@@ -81,6 +82,11 @@ type File struct {
 
 	// Extra keeps members written by a newer YACM.
 	Extra jsonx.Unknown `json:"-"`
+
+	// Skipped names the sessions and groups left out when the file was
+	// read, with the reason (a name with control characters, say): one bad
+	// entry does not stop the rest of the library.
+	Skipped []string `json:"-"`
 }
 
 func (v *File) UnmarshalJSON(b []byte) error {
@@ -217,6 +223,19 @@ func (f *File) check() error {
 		}
 		ids[n.ID] = n
 	}
+	// A session or group that does not pass is left out (its sessions move
+	// up to the library's top), not the whole library.
+	f.Skipped = nil
+	kept := f.Nodes[:0]
+	for _, n := range f.Nodes {
+		if err := store.Validate(n); err != nil {
+			f.Skipped = append(f.Skipped, fmt.Sprintf("%s: %v", printable(n.Name), err))
+			delete(ids, n.ID)
+			continue
+		}
+		kept = append(kept, n)
+	}
+	f.Nodes = kept
 	if d := f.Defaults; d != nil {
 		root := &store.Node{Name: f.Name, IsGroup: true, Defaults: d}
 		if err := store.Validate(root); err != nil {
@@ -618,6 +637,23 @@ func backup(path string, raw []byte, rev int) error {
 		old = old[1:]
 	}
 	return nil
+}
+
+// printable shows a name with control characters as text.
+func printable(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '?'
+		}
+		return r
+	}, s)
+	if s == "" {
+		return "(no name)"
+	}
+	if r := []rune(s); len(r) > 80 {
+		s = string(r[:80]) + "…"
+	}
+	return s
 }
 
 // plainText drops a text with control characters (anti-idle texts write

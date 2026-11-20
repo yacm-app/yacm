@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -421,6 +422,11 @@ func (a *App) InspectImport(path string) (*ImportInfo, error) {
 		f, err := exchange.Parse(data)
 		if err == nil {
 			in := exchange.Inspect(f, a.existingNodes())
+			mine := map[string]*store.Credential{}
+			for _, c := range a.store.Credentials() {
+				mine[c.ID] = c
+			}
+			in.MyProfiles = exchange.UsesMyProfiles(f, mine)
 			return &ImportInfo{Kind: "yacm", Name: filepath.Base(path), Path: path, Info: &in}, nil
 		}
 		if !errors.Is(err, exchange.ErrNotYACM) {
@@ -478,8 +484,15 @@ func (a *App) ImportSessions(path string, opts exchange.ImportOptions) (retRep *
 		rep.KnownHosts = n
 	}
 	if opts.ApplySettings && f.Settings != nil {
-		if err := a.SaveSettings(lookFrom(a.store.Settings(), *f.Settings)); err == nil {
+		st := lookFrom(a.store.Settings(), *f.Settings)
+		if opts.AllSettings {
+			st = a.allFrom(a.store.Settings(), *f.Settings)
+		}
+		if err := a.SaveSettings(st); err == nil {
 			rep.SettingsApplied = true
+			if opts.AllSettings {
+				a.refreshTeam(true)
+			}
 		}
 	}
 	return &rep, nil
@@ -510,6 +523,47 @@ func lookFrom(mine, file store.Settings) store.Settings {
 		out.HighlightRules = safeHighlightRules(file.HighlightRules)
 	}
 	out.AlertSound = file.AlertSound
+	return out
+}
+
+// allFrom takes all settings from your own export (a new computer): saved
+// commands, team libraries, NetBox, the log folder and the security
+// settings too. What belongs to this computer stays: the version whose
+// What's new was shown, and the editing state of team libraries. A team
+// library keeps the login links to profiles that exist here.
+func (a *App) allFrom(mine, file store.Settings) store.Settings {
+	out := file
+	out.Extra = mine.Extra // members this version does not know are not taken
+	out.LastSeenVersion = mine.LastSeenVersion
+	out.HighlightRules = safeHighlightRules(file.HighlightRules)
+	if out.FontSize <= 0 {
+		out.FontSize = mine.FontSize
+	}
+	if out.Scrollback <= 0 {
+		out.Scrollback = mine.Scrollback
+	}
+	out.TeamLibraries = nil
+	for _, l := range file.TeamLibraries {
+		l.Source, l.Revision, l.Extra = "", 0, nil
+		links := map[string]string{}
+		for slot, cid := range l.Logins {
+			if _, ok := a.store.Credential(cid); ok {
+				links[slot] = cid
+			}
+		}
+		l.Logins = links
+		out.TeamLibraries = append(out.TeamLibraries, l)
+	}
+	out.Snippets = nil
+	for _, sn := range file.Snippets {
+		sn.Extra = nil
+		out.Snippets = append(out.Snippets, sn)
+	}
+	for _, l := range mine.TeamLibraries {
+		if !slices.ContainsFunc(out.TeamLibraries, func(x store.TeamLibraryRef) bool { return x.ID == l.ID || x.Path == l.Path }) {
+			out.TeamLibraries = append(out.TeamLibraries, l)
+		}
+	}
 	return out
 }
 
