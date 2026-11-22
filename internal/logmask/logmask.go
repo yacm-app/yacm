@@ -10,6 +10,7 @@ package logmask
 
 import (
 	"bytes"
+	"net"
 	"regexp"
 )
 
@@ -27,6 +28,10 @@ type rule struct {
 }
 
 // number is true for a value of digits only (a key ID, an encryption type).
+func address(s string) bool {
+	return net.ParseIP(s) != nil
+}
+
 func number(s string) bool {
 	for _, c := range s {
 		if c < '0' || c > '9' {
@@ -45,8 +50,11 @@ var rules = []rule{
 	{regexp.MustCompile(`(?i)\b(?:secret|password)\s+(?:(?:0|4|5|6|7|8|9|sha512|sha256|encrypted|hash|cleartext)\s+)?("[^"]*"|\S+)`), nil},
 	// snmp-server community public RO
 	{regexp.MustCompile(`(?i)\bsnmp-server\s+community\s+(\S+)`), nil},
-	// snmp-server host 192.0.2.9 traps version 2c public (IOS, NX-OS, EOS)
-	{regexp.MustCompile(`(?i)\bsnmp-server\s+host\s+\S+\s+(?:(?:informs|traps|vrf\s+\S+)\s+)*(?:version\s+(?:1|2c|3)\s+(?:(?:auth|noauth|priv)\s+)?)?(\S+)`), nil},
+	// snmp-server host inside 192.0.2.9 community public version 2c (ASA)
+	{regexp.MustCompile(`(?i)\bsnmp-server\s+host\s+.*?\bcommunity\s+(?:[0-9]\s+)?(\S+)`), nil},
+	// snmp-server host 192.0.2.9 traps version 2c public (IOS, NX-OS, EOS);
+	// on ASA the second word is the address, which stays.
+	{regexp.MustCompile(`(?i)\bsnmp-server\s+host\s+\S+\s+(?:(?:informs|traps|vrf\s+\S+)\s+)*(?:version\s+(?:1|2c|3)\s+(?:(?:auth|noauth|priv)\s+)?)?(\S+)`), address},
 	// snmp-server user u g auth md5 0x... priv aes-128 0x... (NX-OS, IOS v3)
 	{regexp.MustCompile(`(?i)\bauth\s+(?:md5|sha\S*)\s+(\S+)`), nil},
 	{regexp.MustCompile(`(?i)\bpriv\s+(?:(?:aes(?:[-\s]?\d+)?|3?des)\s+)?(\S+)`), nil},
