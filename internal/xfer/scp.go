@@ -41,10 +41,17 @@ func (s *scpRemote) Kind() string { return "scp" }
 // newChannel opens a session channel. Cisco IOS takes one per connection:
 // while a transfer or a terminal holds it, say so instead of "resource
 // shortage".
-func newChannel(c *ssh.Client) (*ssh.Session, error) {
-	s, err := c.NewSession()
+func newChannel(ctx context.Context, c *ssh.Client) (*ssh.Session, error) {
+	s, err := OpenSession(ctx, c)
 	if err == nil {
 		return s, nil
+	}
+	if errors.Is(err, ErrNoAnswer) {
+		// The connection is no use any more: the link gets a new one.
+		return nil, fmt.Errorf("%w: %v", ErrConnClosed, err)
+	}
+	if ctx.Err() != nil {
+		return nil, err
 	}
 	var oce *ssh.OpenChannelError
 	if !errors.As(err, &oce) {
@@ -70,7 +77,7 @@ func startErr(err error) error {
 
 // Exec runs one command on its own channel and returns what it printed.
 func Exec(ctx context.Context, c *ssh.Client, cmd string, timeout time.Duration) (string, error) {
-	sess, err := newChannel(c)
+	sess, err := newChannel(ctx, c)
 	if err != nil {
 		return "", err
 	}
@@ -384,7 +391,7 @@ func connGone(c *ssh.Client) bool {
 
 // SCPGet copies one remote file (scp -f).
 func SCPGet(ctx context.Context, c *ssh.Client, p string, w io.Writer, progress func(int64)) error {
-	sess, err := newChannel(c)
+	sess, err := newChannel(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -462,7 +469,7 @@ func scpFailure(stderr, line string, err error) error {
 
 // SCPPut writes one remote file (scp -t).
 func SCPPut(ctx context.Context, c *ssh.Client, p string, src io.Reader, size int64, progress func(int64)) error {
-	sess, err := newChannel(c)
+	sess, err := newChannel(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -625,7 +632,7 @@ func (s *scpRemote) Roots(ctx context.Context) []Root {
 // as show tech-support. It ends when the device closes the channel or ctx
 // ends; idle stops it after that long without output (0: no limit).
 func ExecTo(ctx context.Context, c *ssh.Client, cmd string, w io.Writer, progress func(int64), idle time.Duration) (int64, error) {
-	sess, err := newChannel(c)
+	sess, err := newChannel(ctx, c)
 	if err != nil {
 		return 0, err
 	}

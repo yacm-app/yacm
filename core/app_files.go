@@ -139,7 +139,7 @@ func (a *App) filesGet(id string) (*filesConn, error) {
 // spareChannel checks that the connection takes one more session channel
 // (Cisco IOS takes one per connection, and a terminal tab holds it).
 func spareChannel(c *ssh.Client) error {
-	s, err := c.NewSession()
+	s, err := xfer.OpenSession(context.Background(), c)
 	if err != nil {
 		return err
 	}
