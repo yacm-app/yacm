@@ -23,6 +23,7 @@ export const WHATS_NEW = [
       ['Team libraries', 'One session with a bad entry is left out (and named in Settings) instead of the whole library; automation can answer sudo\'s password prompt with your own login.'],
       ['Files tab', 'A device that does not answer the request for a file channel no longer leaves the Files tab waiting: after 30 seconds YACM opens a new connection and tries again.'],
       ['Session logs', 'The SNMP community in an ASA snmp-server host line is masked.'],
+      ['Prompts', 'A device name with characters such as + in its prompt (RU_ZG_IS+C_JUG#) is recognised: anti-idle works there and the name is offered for the session.'],
     ],
   },
   {
