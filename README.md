@@ -110,9 +110,10 @@ hardware, get the separate demo download for your system
   revision check, and a warning when a session's target changes.
 - **Credential profiles and group defaults**: logins, jump hosts, algorithm
   profiles and colours inherited through groups and subgroups.
-- **Edit many sessions at once**: login, jump host, algorithms, port, group,
-  tags, logging, colours, telnet or SSH and more for a selection or a whole
-  group; cut, copy and paste of sessions and groups with their passwords.
+- **Edit many sessions at once** in the same editor as one: every setting,
+  automation rules too (add to each, replace or remove), for a selection or
+  a whole group; folders that keep themselves sorted; cut, copy and paste of
+  sessions and groups with their passwords.
 - **Find among thousands**: one field filters the tree and connects (also to
   addresses nothing saved has); *Go to session* ranks matches and remembers
   what you opened last. Tags, favourites and colours for production and lab.

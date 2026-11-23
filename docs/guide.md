@@ -63,10 +63,17 @@ Hovering shows each label.
   host, an SSH algorithm profile, a colour and terminal colours. Sessions set
   to *From group* use them, also in subgroups, so moving a site behind a new
   bastion is one change.
-- **Edit many sessions at once**: tick the settings to change (login, user,
-  password, jump host, algorithms, port, colour, group, tags, logging, font,
-  terminal colours, paste pause, anti-idle) and apply them to the selection or
-  to a whole group.
+- **Edit many sessions at once**: select them (or right click a group >
+  *Edit all sessions in it*) and the usual session editor opens for all of
+  them. What you change is set in each session; everything you leave alone
+  stays as it is in each. Name, address and description stay each session's
+  own. Settings that differ show the first session's value, and the top of
+  each section names them. Lists (automation rules, saved commands, tunnels,
+  tags, local commands) are added to each session's list, replace it, or
+  remove the matching entries, as you choose. A dot marks the sections you
+  changed, and a summary asks before anything is saved. SSH and telnet
+  sessions can switch type together (serial consoles stay); going to SSH can
+  remove the rules that typed the telnet login.
 - **One field to find and connect** (above the tree): typing part of a name,
   address, group or tag filters the tree. Enter connects to the session whose
   name or address is exactly what you typed (or the only match), opens a quick

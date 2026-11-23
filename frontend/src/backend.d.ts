@@ -97,6 +97,7 @@ export interface Backend {
   OpenBackupFolder(): Promise<void>;
   OpenDataFolder(): Promise<void>;
   OpenLogFolder(): Promise<void>;
+  PatchSessions(a1: any): Promise<any | null>;
   PreviewForeign(a1: string, a2: string, a3: string): Promise<any | null>;
   PreviewTable(a1: string): Promise<any | null>;
   PublishTeamLibrary(a1: any): Promise<any | null>;

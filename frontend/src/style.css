@@ -286,6 +286,13 @@ option { background: var(--bg-raised); color: var(--text); }
 .editor nav button:disabled { opacity: .35; cursor: default; }
 .editor nav button.has-error { color: var(--danger); }
 .editor nav button.has-error::after { content: " •"; }
+.editor nav button.changed::after { content: " •"; color: var(--accent); }
+/* Editing many sessions in the editor */
+.multi-note { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 4px; padding: 6px 10px; margin: 0 0 12px; color: var(--muted); font-size: 12.5px; }
+.multi-note p { margin: 2px 0; }
+.list-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; font-size: 12.5px; color: var(--muted); }
+.list-mode .hint { flex-basis: 100%; }
+ul.summary { margin: 4px 0 10px; padding-left: 20px; }
 .settings-pane > h3:first-child { margin-top: 4px; }
 .editor .pane h3 + p.lead { margin-top: 2px; }
 .editor .pane { padding: 14px 20px; overflow: auto; }

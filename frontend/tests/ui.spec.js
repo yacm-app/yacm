@@ -1455,13 +1455,57 @@ test('editing sessions together switches telnet to SSH and offers to drop the te
   await page.locator('#tree .row', { hasText: 'edge-1' }).click({ button: 'right' });
   await page.getByText(/Edit 3 sessions together/).click();
   const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
-  await dlg.getByText('Connection type', { exact: true }).click();
+  await expect(dlg.locator('.field', { hasText: 'Host' }).locator('input')).toBeDisabled();
+  await dlg.getByRole('radio', { name: 'SSH' }).click();
   await expect(dlg).toContainText('2 sessions change to SSH');
   await expect(dlg).toContainText('1 serial session stays');
-  await expect(dlg).toContainText('from 1 session: SSH logs in itself');
-  await dlg.getByRole('button', { name: 'Apply' }).click();
-  const req = (await calls(page, 'BulkUpdate')).at(-1).args[0];
-  expect(req.change).toEqual({ protocol: 'ssh', dropLoginRules: true });
+  await expect(dlg).toContainText('from 1 session');
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  const sum = page.getByRole('dialog', { name: 'Change 1 setting in 3 sessions?' });
+  await expect(sum).toContainText('Protocol');
+  await sum.getByRole('button', { name: 'Change them' }).click();
+  const req = (await calls(page, 'PatchSessions')).at(-1).args[0];
+  expect(req.patch.set).toEqual(['protocol']);
+  expect(req.patch.session.protocol).toBe('ssh');
+  expect(req.patch.dropLoginRules).toBe(true);
+  expect(req.ids.sort()).toEqual(['c1', 't1', 't2']);
+  expect(errors).toEqual([]);
+});
+
+test('editing sessions together: only what changes is sent, and differing rules need a choice', async ({ page }) => {
+  const nodes = [
+    { id: 'a', parentId: '', name: 'r1', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'ann', expect: [{ id: 'x', active: true, expect: '>', send: 'enable', return: true }] } },
+    { id: 'b', parentId: '', name: 'r2', order: 1, session: { protocol: 'ssh', host: '10.0.0.2', port: 2222, user: 'bob' } },
+  ];
+  const errors = await open(page, { nodes });
+  await page.locator('#tree .row', { hasText: 'r1' }).click();
+  await page.locator('#tree .row', { hasText: 'r2' }).click({ modifiers: ['Control'] });
+  await page.locator('#tree .row', { hasText: 'r2' }).click({ button: 'right' });
+  await page.getByText(/Edit 2 sessions together/).click();
+  const dlg = page.locator('.dialog').filter({ hasText: 'Edit 2 sessions together' });
+  await expect(dlg.locator('.multi-note')).toContainText('Different between them now: Port');
+  await dlg.getByRole('button', { name: 'Authentication' }).click();
+  await expect(dlg.locator('.multi-note')).toContainText('User name');
+  await dlg.locator('label.field', { hasText: 'Username' }).locator('input').fill('jsmith');
+  await expect(dlg.getByRole('button', { name: 'Authentication' })).toHaveClass(/changed/);
+  await dlg.getByRole('button', { name: 'Automation' }).click();
+  await expect(dlg.locator('.list-mode').first()).toContainText('The sessions have different rules');
+  await dlg.getByRole('button', { name: 'Add rule' }).click();
+  await dlg.locator('table.rules tr').nth(1).locator('input[type=text]').first().fill('#');
+  await dlg.locator('table.rules tr').nth(1).locator('input[type=text]').nth(1).fill('terminal length 0');
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  await expect(dlg).toContainText('Choose Add to each, Replace in each or Remove matching for automation rules');
+  await dlg.locator('.list-mode').first().getByRole('radio', { name: 'Add to each' }).click();
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  const sum = page.getByRole('dialog', { name: 'Change 2 settings in 2 sessions?' });
+  await expect(sum).toContainText('Automation rules: add to each');
+  await sum.getByRole('button', { name: 'Change them' }).click();
+  const req = (await calls(page, 'PatchSessions')).at(-1).args[0];
+  expect(req.patch.set.sort()).toEqual(['expect', 'user']);
+  expect(req.patch.lists).toEqual({ expect: 'add' });
+  expect(req.patch.session.user).toBe('jsmith');
+  expect(req.patch.session.expect.map(r => r.send)).toEqual(['terminal length 0']);
+  expect(req.patch.parentId).toBe(null);
   expect(errors).toEqual([]);
 });
 
@@ -1690,5 +1734,26 @@ test('a folder keeps its sessions sorted, and arranging by hand asks first', asy
   await dlg.getByRole('button', { name: 'Turn sorting off' }).click();
   await expect.poll(names).toEqual(['Sites', 'Access', 'sw2', 'sw10', 'r10', 'r2', 'R1']);
   expect((await calls(page, 'SetChildOrder'))[0].args).toEqual(['g', ['sub', 'r2', 'r1', 'r10']]);
+  expect(errors).toEqual([]);
+});
+
+test('editing sessions together: opening every section changes nothing', async ({ page }) => {
+  const nodes = [
+    { id: 'a', parentId: '', name: 'r1', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'ann', antiIdle: 120, tunnels: [{ id: 't', type: 'local', port: 8443, host: '10.0.0.1', hostPort: 443 }] } },
+    { id: 'b', parentId: '', name: 'r2', order: 1, session: { protocol: 'telnet', host: '10.0.0.2', port: 23, logToFile: true, fontSize: 16 } },
+    { id: 'c', parentId: '', name: 'con', order: 2, session: { protocol: 'serial', serial: { device: 'COM1', baud: 9600 } } },
+  ];
+  const errors = await open(page, { nodes });
+  for (const name of ['r1', 'r2', 'con']) await page.locator('#tree .row', { hasText: name }).click({ modifiers: ['Control'] });
+  await page.locator('#tree .row', { hasText: 'r1' }).click({ button: 'right' });
+  await page.getByText(/Edit 3 sessions together/).click();
+  const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
+  for (const sec of ['Connection', 'Authentication', 'Jump hosts', 'Tunnels and proxy', 'Automation', 'Saved commands', 'Terminal and logs']) {
+    await dlg.locator('.editor > nav button', { hasText: sec }).click();
+  }
+  await expect(dlg.locator('.editor > nav button.changed')).toHaveCount(0);
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  await expect(dlg).toContainText('Nothing was changed.');
+  expect(await calls(page, 'PatchSessions')).toEqual([]);
   expect(errors).toEqual([]);
 });

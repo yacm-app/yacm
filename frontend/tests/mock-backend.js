@@ -92,6 +92,7 @@
     SetExpanded: (id, open) => { const n = nodes.find(x => x.id === id); if (n) n.expanded = open; return null; },
     DeleteNode: id => { nodes = nodes.filter(n => n.id !== id && n.parentId !== id); return null; },
     BulkUpdate: req => req.ids.length,
+    PatchSessions: req => ({ changed: req.ids.length, skipped: [] }),
     SaveNode: n => {
       const copy = structuredClone(n);
       if (!copy.id) copy.id = `n${nodes.length + 1}`;

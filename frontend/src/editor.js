@@ -3,7 +3,7 @@
 
 // Session and group editor.
 import { api, state, reload, groupsFlat, inherited, COLORS, COLOR_LABELS, isNewerType, newerTypeText } from './api.js';
-import { h, openDialog, field, check, seg, portGlyph, uuid, errMsg, toast, colorPicker, plural, KEY } from './ui.js';
+import { h, openDialog, field, check, seg, portGlyph, uuid, errMsg, toast, colorPicker, plural, KEY, confirmDialog } from './ui.js';
 import { openProfiles } from './profiles.js';
 import { sessionPicker } from './picker.js';
 import { picker as termPicker, preview as termPreview, resolve as termResolve, colorsFor, sourceText } from './termcolors.js';
@@ -17,7 +17,7 @@ function blankSession(protocol = 'ssh') {
     serial: { device: '', baud: 9600, dataBits: 8, parity: 'none', stopBits: '1' },
     expect: [], expectTimeout: 20, before: [], after: [], clusters: [], macros: [],
     logToFile: false, logDir: '', logTimestamps: false, fontSize: 0, scrollback: 0, pasteDelay: 0, noHighlight: false,
-    credentialId: '', jumpVia: '', termText: '', termBackground: '',
+    credentialId: '', jumpVia: '', termText: '', termBackground: '', antiIdle: 0, antiIdleText: '',
   };
 }
 
@@ -246,24 +246,149 @@ export function askMaster() {
   });
 }
 
-export async function editSession(node, parentId = '', startSection = '') {
+// ---- editing many sessions in the same editor ----
+
+// Lists: what the editor shows is added to, replaces, or is removed from
+// each session's list.
+const LIST_KEYS = ['expect', 'before', 'after', 'clusters', 'macros', 'tunnels'];
+const LIST_MODES = [['add', 'Add to each'], ['replace', 'Replace in each'], ['remove', 'Remove matching']];
+
+// Settings by section, with the names shown when they differ.
+const MULTI_SECTIONS = {
+  Connection: { protocol: 'Protocol', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
+  Authentication: { credentialId: 'Login', user: 'User name', auth: 'Method', keyPath: 'Key file', certPath: 'Certificate', algorithms: 'Algorithms', agentForward: 'Agent forwarding' },
+  'Jump hosts': { jumpVia: 'Jump host', jump: 'Jump hosts' },
+  'Tunnels and proxy': { tunnels: 'Tunnels', proxy: 'Outbound proxy' },
+  Automation: { expect: 'Automation rules', expectTimeout: 'Rule timeout', initialReturn: 'Press Enter once', before: 'Before connecting', after: 'After disconnecting' },
+  'Saved commands': { macros: 'Saved commands' },
+  'Terminal and logs': { logToFile: 'Session log', logTimestamps: 'Time in log lines', logDir: 'Log folder', logName: 'Log file name', 'node.color': 'Tab colour', fontSize: 'Font size', scrollback: 'Scrollback', termText: 'Text colour', termBackground: 'Background colour', pasteDelay: 'Paste pause', noHighlight: 'Highlighting', noAlerts: 'Alerts', keepName: 'Keep this name' },
+};
+const MULTI_LABEL = Object.assign({}, ...Object.values(MULTI_SECTIONS));
+// Each session's own: never set for many.
+const MULTI_OWN = new Set(['host', 'name', 'description']);
+
+function normalized(node) {
+  const b = blankSession(node.session.protocol);
+  const ss = { ...b, ...structuredClone(node.session) };
+  ss.serial = { ...b.serial, ...(ss.serial || {}) };
+  for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) ss[k] = ss[k] || [];
+  return ss;
+}
+
+// tracked wraps obj so that any change below it records its top-level
+// member (prefixed) in touched.
+function tracked(obj, touched, prefix = '', skip = new Set()) {
+  const cache = new WeakMap();
+  const wrap = (o, top) => {
+    if (cache.has(o)) return cache.get(o);
+    const px = new Proxy(o, {
+      get(t, k) {
+        const v = t[k];
+        if (v && typeof v === 'object' && typeof k === 'string' && !(top === null && skip.has(k))) return wrap(v, top ?? k);
+        return v;
+      },
+      set(t, k, v) {
+        // Writing back the same value (a control setting itself up) is no change.
+        const same = t[k] === v || (v && typeof v === 'object' && JSON.stringify(t[k]) === JSON.stringify(v));
+        t[k] = v;
+        if (!same && !(top === null && skip.has(k))) touched.add(prefix + (top ?? String(k)));
+        return true;
+      },
+      deleteProperty(t, k) { delete t[k]; touched.add(prefix + (top ?? String(k))); return true; },
+    });
+    cache.set(o, px);
+    return px;
+  };
+  return wrap(obj, null);
+}
+
+// editSessions opens the session editor for several sessions: settings
+// that differ show the first session's value, and only what is changed is
+// set in each of them.
+export async function editSessions(ids) {
+  const all = ((await api.SessionsUnder(ids)) || []).map(id => state.byId.get(id)).filter(n => n?.session);
+  const nodes = all.filter(n => !n.library && !isNewerType(n));
+  if (!nodes.length) { toast(all.length ? 'These sessions cannot be edited here (team library or a newer YACM).' : 'Nothing to edit.'); return; }
+  if (nodes.length === 1 && all.length === 1) return editSession(nodes[0]);
+  return editSession(null, '', '', { nodes, skipped: all.length - nodes.length });
+}
+
+export async function editSession(node, parentId = '', startSection = '', multi = null) {
   if (isNewerType(node)) {
     openDialog({ title: node.name, body: h('p', { class: 'lead', text: newerTypeText(node) }), buttons: [{ label: 'Close', kind: 'primary', default: true }] });
     return;
   }
-  const isNew = !node;
-  const n = node ? structuredClone(node) : { id: '', parentId, isGroup: false, name: '', description: '', color: '', session: blankSession() };
-  n.session = { ...blankSession(n.session.protocol), ...n.session };
+  const isNew = !node && !multi;
+  /** @type {Set<string>} */
+  const touched = new Set();
+  const mixed = new Set();
+  /** @type {Record<string, string>} */
+  const listMode = {};
+  let raw = null;
+  let n;
+  let dropLogin = true;
+  if (multi) {
+    // The first SSH or telnet session leads, so a mix with serial consoles
+    // shows the network settings.
+    const lead = multi.nodes.find(x => x.session.protocol !== 'serial');
+    if (lead) multi.nodes = [lead, ...multi.nodes.filter(x => x !== lead)];
+    const norms = multi.nodes.map(normalized);
+    const merged = structuredClone(norms[0]);
+    const keys = new Set(norms.flatMap(x => Object.keys(x)));
+    const json = v => JSON.stringify(v ?? null);
+    for (const k of keys) {
+      const same = k === 'serial'
+        ? norms.every(x => json({ ...x.serial, device: '' }) === json({ ...norms[0].serial, device: '' }))
+        : norms.every(x => json(x[k]) === json(norms[0][k]));
+      if (same) continue;
+      mixed.add(k);
+      if (LIST_KEYS.includes(k)) merged[k] = [];
+    }
+    for (const k of LIST_KEYS) listMode[k] = mixed.has(k) ? '' : 'replace';
+    merged.host = '';
+    const first = multi.nodes[0];
+    for (const k of ['parentId', 'color']) if (multi.nodes.some(x => (x[k] || '') !== (first[k] || ''))) mixed.add('node.' + k);
+    raw = { id: '', parentId: first.parentId || '', isGroup: false, name: '', description: '', color: first.color || '', session: merged };
+    const sp = tracked(merged, touched);
+    n = new Proxy(raw, {
+      get: (t, k) => (k === 'session' ? sp : t[k]),
+      set: (t, k, v) => { if (t[k] !== v) touched.add('node.' + String(k)); t[k] = v; return true; },
+    });
+  } else {
+    n = node ? structuredClone(node) : { id: '', parentId, isGroup: false, name: '', description: '', color: '', session: blankSession() };
+    n.session = { ...blankSession(n.session.protocol), ...n.session };
+  }
   if (isNew) {
     n.session.logToFile = !state.settings.logNewOff;
     if (inherited(parentId, 'credentialId').value) n.session.credentialId = 'inherit';
     if (inherited(parentId, 'jumpVia').value) n.session.jumpVia = 'inherit';
     if (inherited(parentId, 'algorithms').value) n.session.algorithms = 'inherit';
   }
-  n.session.serial = { ...blankSession().serial, ...(n.session.serial || {}) };
+  if (!multi) n.session.serial = { ...blankSession().serial, ...(n.session.serial || {}) };
   const s = n.session;
-  for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) s[k] = s[k] || [];
-  const flags = { jump: {}, expect: {}, ...(node ? await api.GetSecretFlags(node.id).catch(() => null) : null) };
+  if (!multi) for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) s[k] = s[k] || [];
+  const protocols = multi ? new Set(multi.nodes.map(x => x.session.protocol)) : new Set([s.protocol]);
+  // multiNote: at the top of a section when editing many sessions.
+  const multiNote = section => {
+    if (!multi) return null;
+    const diff = Object.keys(MULTI_SECTIONS[section] || {}).filter(k => mixed.has(k)).map(k => MULTI_LABEL[k]);
+    return h('div', { class: 'multi-note' },
+      h('p', { text: `What you change here is set in each of the ${multi.nodes.length} sessions; what you leave alone stays as it is in each.` }),
+      diff.length ? h('p', { text: `Different between them now: ${diff.join(', ')}. ${diff.length === 1 ? 'It shows' : 'They show'} the value of ${multi.nodes[0].name}.` }) : null);
+  };
+  // listModeCtl: how a list edited for many sessions is applied.
+  const listModeCtl = (key, what) => {
+    if (!multi) return null;
+    const box = h('div', { class: 'list-mode' });
+    const paint = () => box.replaceChildren(
+      h('span', { text: `${mixed.has(key) ? `The sessions have different ${what}.` : s[key]?.length ? `All the sessions have these ${what}.` : `None of the sessions has ${what} now.`} The ${what} below are:` }),
+      seg(LIST_MODES.map(([v, label]) => ({ value: v, label })), listMode[key], v => { listMode[key] = v; touched.add(key); paint(); refreshMarks(); }),
+      listMode[key] === 'remove' ? h('span', { class: 'hint', text: `Each session loses the ${what} that match one below.` }) : null,
+      !listMode[key] ? h('span', { class: 'hint', text: 'Choose one before saving a change here.' }) : null);
+    paint();
+    return box;
+  };
+  const flags = { jump: {}, expect: {}, ...(node && !multi ? await api.GetSecretFlags(node.id).catch(() => null) : null) };
   const sec = { password: undefined, passphrase: undefined, jump: {}, expect: {}, jumpOrigin: s.jump.map((_, i) => i) };
   const vaultOK = state.vault.unlocked;
   const reveal = (kind, ref = '') => master => api.RevealSecret(n.id, kind, ref, master);
@@ -307,30 +432,61 @@ export async function editSession(node, parentId = '', startSection = '') {
   const show = i => {
     current = i;
     nav.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', j === i));
-    pane.replaceChildren(...[sections[i][1]()].flat().filter(Boolean));
+    const body = [sections[i][1]()].flat().filter(Boolean);
+    if (multi) body.splice(1, 0, multiNote(sections[i][0]));
+    pane.replaceChildren(...body.filter(Boolean));
     pane.scrollTop = 0;
+    refreshMarks();
   };
-  const refreshNav = () => nav.querySelectorAll('button').forEach((b, j) => { const en = sections[j][2]; b.disabled = en ? !en() : false; });
+  const refreshNav = () => nav.querySelectorAll('button').forEach((b, j) => { const en = sections[j][2]; b.disabled = multi ? false : en ? !en() : false; });
   sections.forEach(([label], i) => nav.append(h('button', { type: 'button', text: label, on: { click: () => show(i) } })));
+  // With many sessions, a dot marks the sections with changes.
+  const refreshMarks = () => {
+    if (!multi) return;
+    nav.querySelectorAll('button').forEach((b, j) => {
+      const keys = Object.keys(MULTI_SECTIONS[sections[j][0]] || {});
+      b.classList.toggle('changed', keys.some(k => touched.has(k)) || (sections[j][0] === 'Authentication' && (sec.password !== undefined || sec.passphrase !== undefined)));
+    });
+  };
+  pane.addEventListener('input', () => queueMicrotask(refreshMarks));
+  pane.addEventListener('change', () => queueMicrotask(refreshMarks));
+  pane.addEventListener('click', () => queueMicrotask(refreshMarks));
 
   // ---- sections ----
   function connection() {
     const name = h('input', { type: 'text', value: n.name, spellcheck: false, on: { input: e => (n.name = e.target.value) } });
     const desc = h('textarea', { rows: 2, on: { input: e => (n.description = e.target.value) } }); desc.value = n.description || '';
+    if (multi) { name.disabled = desc.disabled = true; name.placeholder = desc.placeholder = 'Each session keeps its own'; }
     const parent = groupSelect(n.parentId); parent.addEventListener('change', () => (n.parentId = parent.value));
-    const proto = seg([
+    const net = multi ? multi.nodes.filter(x => x.session.protocol !== 'serial') : [];
+    const serials = multi ? multi.nodes.length - net.length : 0;
+    const proto = multi && !net.length ? h('div', { class: 'hint', text: 'Serial' }) : seg([
       { value: 'ssh', label: 'SSH', icon: portGlyph('ssh') },
       { value: 'telnet', label: 'Telnet', icon: portGlyph('telnet') },
-      { value: 'serial', label: 'Serial', icon: portGlyph('serial') },
+      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }]),
     ], s.protocol, v => {
       const defPort = { ssh: 22, telnet: 23 };
-      if (!s.port || s.port === defPort[s.protocol]) s.port = defPort[v] || 0;
+      // With many sessions each one's default port follows (see PatchSessions).
+      if (!multi && (!s.port || s.port === defPort[s.protocol])) s.port = defPort[v] || 0;
       s.protocol = v; refreshNav(); show(0);
     });
     const known = Object.keys(state.clusters).sort((a, b) => a.localeCompare(b));
     const tags = h('input', { type: 'text', value: s.clusters.join(', '), spellcheck: false, list: 'tag-names', placeholder: 'CORE, EDGE', on: { input: e => (s.clusters = e.target.value.split(',').map(x => x.trim()).filter(Boolean)) } });
-    const out = [h('h3', { text: 'Connection' }), field('Name', name), h('div', { class: 'grid2' }, field('Group', parent), h('div', { class: 'field' }, h('span', { text: 'Protocol' }), proto)), field('Description', desc),
+    const tagsMode = listModeCtl('clusters', 'tags');
+    let protoNote = null;
+    if (multi && net.length && touched.has('protocol')) {
+      const isLogin = r => !r.hidden && ['<USER>', '<PASS>'].includes((r.send || '').trim());
+      const moving = net.filter(x => x.session.protocol !== s.protocol);
+      const withLogin = s.protocol === 'ssh' ? moving.filter(x => (x.session.expect || []).some(isLogin)).length : 0;
+      protoNote = h('div', { class: 'inherit-note' },
+        h('span', { text: `${plural(moving.length, 'session changes', 'sessions change')} to ${s.protocol === 'ssh' ? 'SSH' : 'telnet'}; a port that was the default becomes the new default.${serials ? ` ${plural(serials, 'serial session stays', 'serial sessions stay')} as ${serials === 1 ? 'it is' : 'they are'}.` : ''}${s.protocol === 'telnet' ? ' Telnet sends the login and everything you type in clear text.' : ''}` }),
+        withLogin ? check(`Remove the automation rules that type the login (<USER>, <PASS>) from ${plural(withLogin, 'session', 'sessions')}`, h('input', { type: 'checkbox', checked: dropLogin, on: { change: e => (dropLogin = e.target.checked) } }), 'SSH logs in itself, and they would answer a later “Password:” prompt (enable, say).') : null);
+    } else if (multi && serials && net.length) {
+      protoNote = h('div', { class: 'inherit-note', text: `${plural(serials, 'serial session keeps', 'serial sessions keep')} its connection type.` });
+    }
+    const out = [h('h3', { text: 'Connection' }), field('Name', name), h('div', { class: 'grid2' }, field('Group', parent), h('div', { class: 'field' }, h('span', { text: 'Protocol' }), proto, protoNote)), field('Description', desc),
       field('Tags (comma separated)', tags, `Labels across folders, for example CORE in every site. A tag opens all its sessions at once and pre-selects them for Type to many.${known.length ? ` Existing: ${known.join(', ')}` : ''}`),
+      tagsMode,
       h('datalist', { id: 'tag-names' }, ...known.map(k => h('option', { value: k })))];
     if (s.protocol === 'serial') {
       const dev = h('input', { type: 'text', value: s.serial.device, list: 'serial-ports', spellcheck: false, placeholder: navigator.platform.startsWith('Win') ? 'COM3' : '/dev/ttyUSB0', on: { input: e => (s.serial.device = e.target.value.trim()) } });
@@ -349,12 +505,12 @@ export async function editSession(node, parentId = '', startSection = '') {
       const bits = h('select', { on: { change: e => (s.serial.dataBits = +e.target.value) } }, ...[8, 7, 6, 5].map(b => h('option', { value: b, text: b }))); bits.value = s.serial.dataBits;
       const par = h('select', { on: { change: e => (s.serial.parity = e.target.value) } }, ...['none', 'even', 'odd', 'mark', 'space'].map(b => h('option', { value: b, text: b }))); par.value = s.serial.parity;
       const stop = h('select', { on: { change: e => (s.serial.stopBits = e.target.value) } }, ...['1', '1.5', '2'].map(b => h('option', { value: b, text: b }))); stop.value = s.serial.stopBits;
-      scan();
+      if (multi) { dev.disabled = true; dev.value = ''; dev.placeholder = 'Each session keeps its own'; } else scan();
       out.push(h('label', { class: 'field mono' }, h('span', { text: 'Port' }), h('div', { class: 'with-btn' }, dev, h('button', { type: 'button', class: 'btn small', text: 'Rescan', on: { click: scan } })), hint), dl,
         h('div', { class: 'grid2' }, field('Speed (baud)', baud), field('Data bits', bits), field('Parity', par), field('Stop bits', stop)),
         h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: 'Cisco and most network consoles use 9600 8N1.' }));
     } else {
-      const host = h('input', { type: 'text', value: s.host, spellcheck: false, placeholder: '10.0.0.1 or router.example.net', on: { input: e => (s.host = e.target.value.trim()) } });
+      const host = h('input', { type: 'text', value: s.host, spellcheck: false, placeholder: multi ? 'Each session keeps its own' : '10.0.0.1 or router.example.net', disabled: !!multi, on: { input: e => (s.host = e.target.value.trim()) } });
       const port = h('input', { type: 'number', min: 1, max: 65535, value: s.port, on: { input: e => (s.port = +e.target.value) } });
       out.push(h('div', { class: 'grid-host' }, h('label', { class: 'field mono' }, h('span', { text: 'Host' }), host), h('label', { class: 'field mono' }, h('span', { text: 'Port' }), port)));
       if (s.protocol === 'telnet') out.push(h('p', { class: 'warning', text: 'Telnet is not encrypted: the password and everything you type cross the network in clear text. Use it only on isolated lab or out-of-band networks.' }));
@@ -436,6 +592,7 @@ export async function editSession(node, parentId = '', startSection = '') {
   function jumps() {
     const out = [h('h3', { text: 'Jump hosts' }), h('p', { class: 'lead', text: 'Connect through a bastion host, like ssh -J. The easiest way is to pick a saved SSH session: its address, login and its own jump host are used, so changing the bastion once changes it for everyone.' })];
     if (s.protocol === 'telnet') out.push(h('p', { class: 'hint', style: { color: 'var(--muted)', marginTop: '-6px' }, text: 'Telnet goes through the SSH jump host as a forwarded connection: encrypted up to the jump host, clear text from there to the device. The jump host must allow TCP forwarding.' }));
+    if (multi) out.push(h('p', { class: 'hint', style: { color: 'var(--muted)' }, text: 'A route changed here replaces each session’s route. Passwords of jump hosts entered here are stored for each session; type them again when you change the hosts.' }));
     const mode = s.jumpVia === 'inherit' ? 'inherit' : s.jumpVia ? 'session' : s.jump.length ? 'custom' : 'direct';
     const g = inherited(n.parentId, 'jumpVia');
     const gNode = g.value ? state.byId.get(g.value) : null;
@@ -496,7 +653,8 @@ export async function editSession(node, parentId = '', startSection = '') {
       return [h('h3', { text: 'Outbound proxy' }), proxyFields(() => s.proxy, v => (s.proxy = v), n.parentId)];
     }
     const out = [h('h3', { text: 'Tunnels' }),
-      h('p', { class: 'lead', text: 'Port forwards through this SSH connection, like ssh -L, -R and -D. Ticked tunnels start when the session connects and stop with it; the others can be started from Tunnels in the status bar. Network devices often refuse forwarding: define tunnels on the jump host’s session instead.' })];
+      h('p', { class: 'lead', text: 'Port forwards through this SSH connection, like ssh -L, -R and -D. Ticked tunnels start when the session connects and stop with it; the others can be started from Tunnels in the status bar. Network devices often refuse forwarding: define tunnels on the jump host’s session instead.' }),
+      listModeCtl('tunnels', 'tunnels')];
     const table = h('table', { class: 'rules tunnels' }, h('tr', {}, h('th', { text: 'Start' }), h('th', { text: 'Type' }), h('th', { text: 'Listen port' }), h('th', { text: 'Destination host' }), h('th', { text: 'Port' }), h('th', { text: 'Shared', title: 'Other computers may connect' }), h('th', { text: 'Name' }), h('th')));
     s.tunnels.forEach((t, i) => {
       const type = h('select', { on: { change: e => { t.type = e.target.value; show(current); } } },
@@ -531,6 +689,7 @@ export async function editSession(node, parentId = '', startSection = '') {
     const out = [h('h3', { text: 'Automation' }),
       h('p', { class: 'lead' }, 'After connecting, each active rule waits for its pattern (a regular expression) and then sends its text; a rule with nothing to wait for sends at once. Use ', h('kbd', { text: '<USER>' }), ' ', h('kbd', { text: '<PASS>' }), ' ', h('kbd', { text: '<HOST>' }), ' ', h('kbd', { text: '<PORT>' }), ' ', h('kbd', { text: '<NAME>' }), ' in the text. Hidden texts are kept in the vault.'),
       check('Press Enter once right after connecting', h('input', { type: 'checkbox', checked: !!s.initialReturn, on: { change: e => (s.initialReturn = e.target.checked) } }), 'Wakes up consoles and terminal servers that show nothing until a key is pressed (SecureCRT: Send initial carriage return).')];
+    out.push(listModeCtl('expect', 'rules'));
     const table = h('table', { class: 'rules' }, h('tr', {}, h('th', {}), h('th', { text: 'On' }), h('th', { text: 'Wait for' }), h('th', { text: 'Then send' }), h('th', { text: 'Hidden' }), h('th', { text: 'Enter' }), h('th', { text: 'Timeout' }), h('th', { text: 'If not seen' }), h('th')));
     s.expect.forEach((r, i) => {
       const stored = flags.expect[r.id];
@@ -562,23 +721,24 @@ export async function editSession(node, parentId = '', startSection = '') {
         } } })),
       h('div', { style: { maxWidth: '260px' } }, field('Default timeout per rule (seconds)', et)));
 
-    const cmdList = (title, lead, list) => {
+    const cmdList = (title, lead, list, key) => {
       const tbl = h('table', { class: 'rules' }, h('tr', {}, h('th', { text: 'Command' }), h('th', { text: 'Ask first' }), h('th')));
       list.forEach((c, i) => tbl.append(h('tr', {},
         h('td', {}, h('input', { type: 'text', value: c.command, spellcheck: false, on: { input: e => (c.command = e.target.value) } })),
         h('td', { style: { width: '80px' } }, h('input', { type: 'checkbox', checked: c.confirm, on: { change: e => (c.confirm = e.target.checked) } })),
         h('td', { style: { width: '24px' } }, h('button', { type: 'button', class: 'del', text: '×', title: 'Remove', on: { click: () => { list.splice(i, 1); show(current); } } })))));
-      return [h('h3', { text: title, style: { marginTop: '18px' } }), h('p', { class: 'lead', text: lead }), tbl,
+      return [h('h3', { text: title, style: { marginTop: '18px' } }), h('p', { class: 'lead', text: lead }), listModeCtl(key, 'commands'), tbl,
         h('button', { type: 'button', class: 'btn small', text: 'Add command', on: { click: () => { list.push({ command: '', confirm: true }); show(current); } } })];
     };
-    out.push(...cmdList('Before connecting', 'Runs on this computer. YACM_HOST, YACM_PORT, YACM_USER and YACM_NAME are set.', s.before),
-      ...cmdList('After disconnecting', 'Runs on this computer when the session ends.', s.after));
+    out.push(...cmdList('Before connecting', 'Runs on this computer. YACM_HOST, YACM_PORT, YACM_USER and YACM_NAME are set.', s.before, 'before'),
+      ...cmdList('After disconnecting', 'Runs on this computer when the session ends.', s.after, 'after'));
     return out;
   }
 
   function macros() {
     const out = [h('h3', { text: 'Saved commands' }),
-      h('p', { class: 'lead', text: `Commands for this device that are sent only when you pick them: Commands (${KEY.palette}) lists them first, under “This session”. Multi-line text is sent line by line. Commands that run by themselves, on login or when the device prints something, are under Automation.` })];
+      h('p', { class: 'lead', text: `Commands for this device that are sent only when you pick them: Commands (${KEY.palette}) lists them first, under “This session”. Multi-line text is sent line by line. Commands that run by themselves, on login or when the device prints something, are under Automation.` }),
+      listModeCtl('macros', 'commands')];
     const tbl = h('table', { class: 'rules' }, h('tr', {}, h('th', { text: 'Name' }), h('th', { text: 'Text' }), h('th', { text: 'Enter' }), h('th')));
     s.macros.forEach((m, i) => {
       const txt = h('textarea', { rows: Math.min(6, Math.max(1, (m.text || '').split('\n').length)), spellcheck: false, style: { width: '100%', fontFamily: 'var(--mono)', fontSize: '12.5px', background: 'var(--bg-input)', border: '1px solid var(--line)', borderRadius: '4px', padding: '4px 7px' }, on: { input: e => (m.text = e.target.value) } });
@@ -631,10 +791,65 @@ export async function editSession(node, parentId = '', startSection = '') {
       check('Keep this session name', keep, 'Never offer to rename it after the hostname the device shows in its prompt.')];
   }
 
+  // saveMany sends only the changed settings, after a summary.
+  async function saveMany() {
+    const o = structuredClone(raw.session);
+    const set = [...touched].filter(k => !k.startsWith('node.') && !MULTI_OWN.has(k));
+    o.expect = o.expect.filter(r => r.expect.trim() || r.send || sec.expect[r.id]);
+    o.before = o.before.filter(c => c.command.trim());
+    o.after = o.after.filter(c => c.command.trim());
+    o.macros = o.macros.filter(m => m.text.trim());
+    o.tunnels = (o.tunnels || []).filter(t => t.port || t.host || t.hostPort);
+    if (o.jumpVia) o.jump = [];
+    if (set.includes('jump') || set.includes('jumpVia')) { for (const k of ['jump', 'jumpVia']) if (!set.includes(k)) set.push(k); }
+    const unset = set.filter(k => LIST_KEYS.includes(k) && !listMode[k]);
+    if (unset.length) {
+      show(sections.findIndex(([name]) => MULTI_SECTIONS[name]?.[unset[0]] !== undefined));
+      throw new Error(`Choose Add to each, Replace in each or Remove matching for ${unset.map(k => MULTI_LABEL[k].toLowerCase()).join(', ')}.`);
+    }
+    const nodeSet = ['parentId', 'color'].filter(k => touched.has('node.' + k));
+    const lines = [...set.map(k => (LIST_KEYS.includes(k) ? `${MULTI_LABEL[k] || k}: ${LIST_MODES.find(([v]) => v === listMode[k])?.[1].toLowerCase()}` : MULTI_LABEL[k] || k)),
+      ...nodeSet.map(k => MULTI_LABEL['node.' + k])];
+    if (sec.password) lines.push('Password');
+    if (sec.passphrase) lines.push('Key passphrase');
+    if (!lines.length) throw new Error('Nothing was changed.');
+    const ok = await confirmDialog({
+      title: `Change ${plural(lines.length, 'setting', 'settings')} in ${multi.nodes.length} sessions?`,
+      message: h('div', {}, h('ul', { class: 'summary' }, ...lines.map(t => h('li', { text: t }))),
+        h('p', { class: 'hint', text: 'Everything else stays as it is in each session. A backup is made first.' })),
+      ok: 'Change them',
+    });
+    if (!ok) return false;
+    const patch = { session: o, set, lists: Object.fromEntries(set.filter(k => LIST_KEYS.includes(k)).map(k => [k, listMode[k]])),
+      parentId: nodeSet.includes('parentId') ? raw.parentId : null, color: nodeSet.includes('color') ? raw.color : null,
+      dropLoginRules: set.includes('protocol') && o.protocol === 'ssh' && dropLogin };
+    const res = await api.PatchSessions({
+      ids: multi.nodes.map(x => x.id), patch,
+      password: sec.password || null, passphrase: sec.passphrase || null,
+      expect: Object.fromEntries(Object.entries(sec.expect).filter(([, v]) => v)),
+      jump: Object.fromEntries(Object.entries(sec.jump).filter(([, v]) => v)),
+    });
+    await reload();
+    window.dispatchEvent(new Event('yacm:tree'));
+    toast(`Changed ${plural(res.changed, 'session', 'sessions')}.${res.skipped?.length ? ` Left alone: ${res.skipped.join('; ')}.` : ''}`);
+    return true;
+  }
+
   // ---- dialog ----
   const body = h('div', { class: 'editor' }, nav, pane);
   refreshNav();
   show(Math.max(0, sections.findIndex(x => x[0] === startSection)));
+  if (multi) {
+    const names = multi.nodes.map(x => x.name);
+    openDialog({
+      title: `Edit ${multi.nodes.length} sessions together`,
+      sub: (names.length <= 4 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`) + (multi.skipped ? ` (${plural(multi.skipped, 'session', 'sessions')} from a team library or a newer YACM left out)` : ''),
+      wide: true,
+      body,
+      buttons: [{ label: 'Cancel' }, { label: 'Save sessions', kind: 'primary', default: true, onClick: () => saveMany() }],
+    });
+    return;
+  }
   openDialog({
     title: isNew ? 'New session' : `Edit ${n.name}`,
     wide: true,
