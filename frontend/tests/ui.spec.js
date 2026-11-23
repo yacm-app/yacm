@@ -1684,8 +1684,11 @@ test('Type to many keeps the command field on its own full-width row, however ma
   const search = page.locator('#search');
   for (let i = 1; i <= 30; i++) {
     await search.fill(`admin@192.0.2.${i}`);
-    await page.keyboard.press('Enter');
+    await search.press('Enter');
     await expect(page.locator('.tab')).toHaveCount(i);
+    // The new tab takes the focus a moment later; wait for it, or it can
+    // take it from the field while the next address is typed.
+    await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea'));
   }
   await page.getByRole('button', { name: 'Type to many' }).click();
   const bar = page.locator('#broadcast');
