@@ -27,11 +27,13 @@ type rule struct {
 	keep func(string) bool
 }
 
-// number is true for a value of digits only (a key ID, an encryption type).
+// address is true for an IP address (on ASA the second word of
+// snmp-server host, which is not a secret).
 func address(s string) bool {
 	return net.ParseIP(s) != nil
 }
 
+// number is true for a value of digits only (a key ID, an encryption type).
 func number(s string) bool {
 	for _, c := range s {
 		if c < '0' || c > '9' {
