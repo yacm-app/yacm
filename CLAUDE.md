@@ -139,6 +139,11 @@ bash build/package.sh               # Windows x64/arm64 zips, Linux tar.gz, demo
 sh build/darwin/build-macos.sh      # on a Mac: dist-macos/*.dmg and the demo zip
 ```
 
+`golang.org/x/crypto` is replaced by `github.com/yacm-app/crypto` (go.mod):
+upstream removed DSA in v0.59.0, the fork's `dsa-vX.Y.Z` branches put it back
+(its DSA build workflow makes them for each release, tagged `vX.Y.Z-yacm.1`).
+Update the replace by hand; `TestDSAHostKeyAndLogin` fails without DSA.
+
 Linux desktop builds need `-tags desktop,production,webkit2_41` and
 `libgtk-3-dev libwebkit2gtk-4.1-dev`. Windows builds cross-compile without cgo.
 

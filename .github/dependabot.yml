@@ -16,6 +16,10 @@ updates:
       # three systems; a new release may also need more of the go-toast
       # stub in third_party.
       - dependency-name: github.com/wailsapp/wails/v2
+      # golang.org/x/crypto comes from github.com/yacm-app/crypto (upstream
+      # with DSA kept; see the replace in go.mod), updated by hand when its
+      # DSA build workflow tags a new release.
+      - dependency-name: golang.org/x/crypto
   - package-ecosystem: npm
     directory: /frontend
     schedule:
