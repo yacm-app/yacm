@@ -45,6 +45,15 @@ func (v FolderSort) MarshalJSON() ([]byte, error) {
 	return jsonx.Marshal(plain(v), v.Extra)
 }
 
+func (v *LocalOptions) UnmarshalJSON(b []byte) error {
+	type plain LocalOptions
+	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
+}
+func (v LocalOptions) MarshalJSON() ([]byte, error) {
+	type plain LocalOptions
+	return jsonx.Marshal(plain(v), v.Extra)
+}
+
 func (v *Credential) UnmarshalJSON(b []byte) error {
 	type plain Credential
 	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
@@ -167,7 +176,7 @@ func (v fileFormat) MarshalJSON() ([]byte, error) {
 // opened or edited here.
 func KnownProtocol(p Protocol) bool {
 	switch p {
-	case ProtoSSH, ProtoTelnet, ProtoSerial:
+	case ProtoSSH, ProtoTelnet, ProtoSerial, ProtoLocal:
 		return true
 	}
 	return false
@@ -191,6 +200,9 @@ func keepUnknownNode(c, old *Node) {
 		c.Session.Extra = jsonx.Keep(c.Session.Extra, old.Session.Extra)
 		if c.Session.Serial != nil && old.Session.Serial != nil {
 			c.Session.Serial.Extra = jsonx.Keep(c.Session.Serial.Extra, old.Session.Serial.Extra)
+		}
+		if c.Session.Local != nil && old.Session.Local != nil {
+			c.Session.Local.Extra = jsonx.Keep(c.Session.Local.Extra, old.Session.Local.Extra)
 		}
 		for i := range c.Session.Tunnels {
 			for _, o := range old.Session.Tunnels {
@@ -228,6 +240,9 @@ func DropUnknown(n *Node) {
 	ss.Extra = nil
 	if ss.Serial != nil {
 		ss.Serial.Extra = nil
+	}
+	if ss.Local != nil {
+		ss.Local.Extra = nil
 	}
 	for i := range ss.Jump {
 		ss.Jump[i].Extra = nil
@@ -267,6 +282,30 @@ func DisarmTunnels(n *Node) {
 	}
 }
 
+// DisarmLocal: a local session from someone else's file (a .yacm import, a
+// team library) never starts a program by its path. A shell chosen by path
+// becomes this computer's own shell; named shells, docker and kubectl stay.
+// It reports whether anything was changed.
+func DisarmLocal(n *Node) bool {
+	if n == nil || n.Session == nil || n.Session.Local == nil {
+		return false
+	}
+	lo := n.Session.Local
+	if lo.Kind == "shell" && lo.Shell != "" && !isShellName(lo.Shell) {
+		lo.Shell = ""
+		return true
+	}
+	return false
+}
+
+func isShellName(s string) bool {
+	switch s {
+	case "powershell", "pwsh", "cmd", "wsl", "bash", "zsh", "fish", "sh":
+		return true
+	}
+	return false
+}
+
 // HasUnknown reports whether n carries anything only a newer YACM knows: a
 // connection type or members this version does not have.
 func HasUnknown(n *Node) bool {
@@ -280,7 +319,7 @@ func HasUnknown(n *Node) bool {
 	if ss == nil {
 		return false
 	}
-	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) {
+	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) || (ss.Local != nil && len(ss.Local.Extra) > 0) {
 		return true
 	}
 	for _, j := range ss.Jump {

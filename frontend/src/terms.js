@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { api, on, state, runtime, colorOf, reload, isNewerType, newerTypeText, saveSettings } from './api.js';
-import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC, fitMiddle } from './ui.js';
+import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC, fitMiddle, localLabel } from './ui.js';
 import { Highlighter, compileAlerts, stripAnsi } from './highlight.js';
 import { zoomTree, inSidebar, applyTreeZoom } from './treezoom.js';
 import { openPalette, editLibrary } from './snippets.js';
@@ -826,8 +826,9 @@ export async function restoreTabs() {
 
 /** @param {string} spec @param {{ after?: string }} [opts] */
 export async function openQuick(spec, { after } = {}) {
-  const proto = spec.startsWith('telnet://') ? 'telnet' : spec.startsWith('serial://') ? 'serial' : 'ssh';
-  const node = { id: 'quick', name: spec.replace(/^(ssh|telnet|serial):\/\//, ''), session: { protocol: proto } };
+  const proto = spec.startsWith('telnet://') ? 'telnet' : spec.startsWith('serial://') ? 'serial' : spec.startsWith('local://') ? 'local' : 'ssh';
+  const name = proto === 'local' ? localLabel({ kind: 'shell', shell: spec.slice(8) }) : spec.replace(/^(ssh|telnet|serial):\/\//, '');
+  const node = { id: 'quick', name, session: { protocol: proto, local: proto === 'local' ? { kind: 'shell', shell: spec.slice(8) } : undefined } };
   const t = addTab(crypto.randomUUID(), node, after);
   t.quick = spec;
   t.fitAndResize();
@@ -1303,7 +1304,7 @@ function renderTabbar() {
       style: { '--proto': `var(--${proto})` },
     },
       h('span', { class: `led ${t.waiting ? 'waiting' : t.state}` }),
-      isTerm(t) ? portGlyph(proto) : icon(t.kind, `port ${t.kind}`),
+      isTerm(t) ? portGlyph(proto, t.node.session?.local?.kind) : icon(t.kind, `port ${t.kind}`),
       h('span', { class: 'title', text: t.kind === 'terminal' ? tabName(t) : t.node.name }),
       t.alert ? h('span', { class: 'alert-dot', title: `Alert: ${t.alert.line}`, style: { background: alertColor(t.alert.color) } }) : null,
       h('button', { class: 'close', title: `Close tab (${KEY.close})`, 'aria-label': 'Close tab', text: '×', on: { click: e => { e.stopPropagation(); requestClose(id); } } }));
@@ -1479,6 +1480,8 @@ function facts(t) {
   } else if (proto === 'telnet') {
     const via = t.summary.match(/through jump host (\S+)/);
     out.push(['Encryption', via ? `SSH up to the jump host ${via[1]}, clear text from there to the device` : 'none, telnet sends everything in clear text', true]);
+  } else if (proto === 'local') {
+    out.push(['Runs', t.summary.replace(/^local /, '')]);
   } else {
     out.push(['Line', t.summary.replace(/^serial /, '').replace(' · ', ', ')]);
   }

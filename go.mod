@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/Microsoft/go-winio v0.6.4
+	github.com/creack/pty v1.1.24
 	github.com/goccy/go-yaml v1.19.2
 	github.com/pkg/sftp v1.13.12
 	github.com/tc-hib/winres v0.3.1

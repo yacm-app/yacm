@@ -44,7 +44,7 @@ type SessionPatch struct {
 var listMembers = map[string]bool{"expect": true, "before": true, "after": true, "clusters": true, "macros": true, "tunnels": true}
 
 // Members that are each session's own and never set for many at once.
-var patchLocked = map[string]bool{"host": true}
+var patchLocked = map[string]bool{"host": true, "local": true}
 
 // Members that only apply to some connection types.
 var patchFor = map[string][]Protocol{

@@ -20,6 +20,7 @@ import (
 	"github.com/yacm-app/yacm/internal/applog"
 	"github.com/yacm-app/yacm/internal/expect"
 	"github.com/yacm-app/yacm/internal/localcmd"
+	"github.com/yacm-app/yacm/internal/localterm"
 	"github.com/yacm-app/yacm/internal/logmask"
 	"github.com/yacm-app/yacm/internal/serialconn"
 	"github.com/yacm-app/yacm/internal/sshconn"
@@ -87,12 +88,16 @@ type ConnectRequest struct {
 var (
 	quickRe  = regexp.MustCompile(`^(?:(ssh|telnet)://)?(?:([^@\s]+)@)?(\[[0-9A-Fa-f:.%]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$`)
 	serialRe = regexp.MustCompile(`^serial://([^?\s]+)(?:\?baud=(\d+))?$`)
+	localRe  = regexp.MustCompile(`^local://([a-z0-9]*)$`)
 )
 
 func parseQuick(s string) (*store.Node, error) {
 	s = strings.TrimSpace(s)
 	var n *store.Node
-	if m := serialRe.FindStringSubmatch(s); m != nil {
+	if m := localRe.FindStringSubmatch(s); m != nil {
+		lo := &store.LocalOptions{Kind: localterm.KindShell, Shell: m[1]}
+		n = &store.Node{Name: localterm.Label(localterm.Options{Kind: lo.Kind, Shell: lo.Shell}), Session: &store.Session{Protocol: store.ProtoLocal, Local: lo}}
+	} else if m := serialRe.FindStringSubmatch(s); m != nil {
 		baud := 9600
 		if m[2] != "" {
 			baud, _ = strconv.Atoi(m[2])
@@ -352,6 +357,14 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		pc, err = serialconn.Open(s)
 		if err == nil {
 			c, summary = pc, fmt.Sprintf("serial %s · %d %d%s%s", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
+		}
+	case store.ProtoLocal:
+		o := localOptions(ss)
+		a.tabLog(t, "starting %s…", localterm.Label(o))
+		var lc *localterm.Conn
+		lc, err = localterm.Start(o, t.cols, t.rows)
+		if err == nil {
+			c, summary = lc, localterm.Label(o)
 		}
 	default:
 		err = fmt.Errorf("unsupported protocol %q", ss.Protocol)
@@ -680,6 +693,9 @@ func (a *App) openLog(t *tab) *os.File {
 	}
 	if n.Session.Protocol == store.ProtoSerial && n.Session.Serial != nil {
 		v.Host = n.Session.Serial.Device
+	}
+	if n.Session.Protocol == store.ProtoLocal && n.Session.Local != nil {
+		v.Host = localTarget(n.Session.Local)
 	}
 	if t.eff != nil {
 		v.User = t.eff.User

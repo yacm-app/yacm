@@ -3,7 +3,7 @@
 
 // Session and group editor.
 import { api, state, reload, groupsFlat, inherited, COLORS, COLOR_LABELS, isNewerType, newerTypeText } from './api.js';
-import { h, openDialog, field, check, seg, portGlyph, uuid, errMsg, toast, colorPicker, plural, KEY, confirmDialog } from './ui.js';
+import { h, openDialog, field, check, seg, portGlyph, uuid, errMsg, toast, colorPicker, plural, KEY, confirmDialog, protoLabel } from './ui.js';
 import { openProfiles } from './profiles.js';
 import { sessionPicker } from './picker.js';
 import { picker as termPicker, preview as termPreview, resolve as termResolve, colorsFor, sourceText } from './termcolors.js';
@@ -15,6 +15,7 @@ function blankSession(protocol = 'ssh') {
     protocol, host: '', port: protocol === 'telnet' ? 23 : 22, user: '',
     auth: 'password', keyPath: '', certPath: '', jump: [], algorithms: 'secure', keepAlive: 30, agentForward: false, connectTimeout: 15,
     serial: { device: '', baud: 9600, dataBits: 8, parity: 'none', stopBits: '1' },
+    local: { kind: 'shell', shell: '', dir: '', target: '', namespace: '', container: '', context: '', command: '' },
     expect: [], expectTimeout: 20, before: [], after: [], clusters: [], macros: [],
     logToFile: false, logDir: '', logTimestamps: false, fontSize: 0, scrollback: 0, pasteDelay: 0, noHighlight: false,
     credentialId: '', jumpVia: '', termText: '', termBackground: '', antiIdle: 0, antiIdleText: '',
@@ -265,12 +266,13 @@ const MULTI_SECTIONS = {
 };
 const MULTI_LABEL = Object.assign({}, ...Object.values(MULTI_SECTIONS));
 // Each session's own: never set for many.
-const MULTI_OWN = new Set(['host', 'name', 'description']);
+const MULTI_OWN = new Set(['host', 'name', 'description', 'local']);
 
 function normalized(node) {
   const b = blankSession(node.session.protocol);
   const ss = { ...b, ...structuredClone(node.session) };
   ss.serial = { ...b.serial, ...(ss.serial || {}) };
+  ss.local = { ...b.local, ...(ss.local || {}) };
   for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) ss[k] = ss[k] || [];
   return ss;
 }
@@ -365,6 +367,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     if (inherited(parentId, 'algorithms').value) n.session.algorithms = 'inherit';
   }
   if (!multi) n.session.serial = { ...blankSession().serial, ...(n.session.serial || {}) };
+  if (!multi) n.session.local = { ...blankSession().local, ...(n.session.local || {}) };
   const s = n.session;
   if (!multi) for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) s[k] = s[k] || [];
   const protocols = multi ? new Set(multi.nodes.map(x => x.session.protocol)) : new Set([s.protocol]);
@@ -380,11 +383,11 @@ export async function editSession(node, parentId = '', startSection = '', multi 
   const listModeCtl = (key, what) => {
     if (!multi) return null;
     const box = h('div', { class: 'list-mode' });
-    const paint = () => box.replaceChildren(
+    const paint = () => box.replaceChildren(...[
       h('span', { text: `${mixed.has(key) ? `The sessions have different ${what}.` : s[key]?.length ? `All the sessions have these ${what}.` : `None of the sessions has ${what} now.`} The ${what} below are:` }),
       seg(LIST_MODES.map(([v, label]) => ({ value: v, label })), listMode[key], v => { listMode[key] = v; touched.add(key); paint(); refreshMarks(); }),
       listMode[key] === 'remove' ? h('span', { class: 'hint', text: `Each session loses the ${what} that match one below.` }) : null,
-      !listMode[key] ? h('span', { class: 'hint', text: 'Choose one before saving a change here.' }) : null);
+      !listMode[key] ? h('span', { class: 'hint', text: 'Choose one before saving a change here.' }) : null].filter(Boolean));
     paint();
     return box;
   };
@@ -407,7 +410,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     return c ? `From group: ${c.name}${c.user ? ` (${c.user})` : ''}` : 'From group (the group sets no login)';
   };
   const loginPicker = () => {
-    const sel = credentialSelect(s.credentialId, { own: 'This session’s own login', inherit: groupProfileText() });
+    const sel = credentialSelect(s.credentialId, { own: multi ? 'Each session’s own login' : 'This session’s own login', inherit: groupProfileText() });
     sel.addEventListener('change', () => { s.credentialId = sel.value; show(current); });
     const manage = h('button', { type: 'button', class: 'btn small', text: 'Profiles…', on: { click: () => openProfiles(() => show(current)) } });
     const prof = profileInUse();
@@ -421,7 +424,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
   /** @type {[string, () => any, (() => boolean)?][]} */
   const sections = [
     ['Connection', connection],
-    ['Authentication', auth],
+    ['Authentication', auth, () => s.protocol !== 'local'],
     ['Jump hosts', jumps, () => s.protocol === 'ssh' || s.protocol === 'telnet'],
     ['Tunnels and proxy', tunnels, () => s.protocol === 'ssh' || s.protocol === 'telnet'],
     ['Automation', automation],
@@ -458,12 +461,12 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     const desc = h('textarea', { rows: 2, on: { input: e => (n.description = e.target.value) } }); desc.value = n.description || '';
     if (multi) { name.disabled = desc.disabled = true; name.placeholder = desc.placeholder = 'Each session keeps its own'; }
     const parent = groupSelect(n.parentId); parent.addEventListener('change', () => (n.parentId = parent.value));
-    const net = multi ? multi.nodes.filter(x => x.session.protocol !== 'serial') : [];
+    const net = multi ? multi.nodes.filter(x => x.session.protocol === 'ssh' || x.session.protocol === 'telnet') : [];
     const serials = multi ? multi.nodes.length - net.length : 0;
-    const proto = multi && !net.length ? h('div', { class: 'hint', text: 'Serial' }) : seg([
+    const proto = multi && !net.length ? h('div', { class: 'hint', text: [...protocols].map(p => protoLabel[p] || p).join(', ') }) : seg([
       { value: 'ssh', label: 'SSH', icon: portGlyph('ssh') },
       { value: 'telnet', label: 'Telnet', icon: portGlyph('telnet') },
-      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }]),
+      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }, { value: 'local', label: 'Local', icon: portGlyph('local') }]),
     ], s.protocol, v => {
       const defPort = { ssh: 22, telnet: 23 };
       // With many sessions each one's default port follows (see PatchSessions).
@@ -479,16 +482,20 @@ export async function editSession(node, parentId = '', startSection = '', multi 
       const moving = net.filter(x => x.session.protocol !== s.protocol);
       const withLogin = s.protocol === 'ssh' ? moving.filter(x => (x.session.expect || []).some(isLogin)).length : 0;
       protoNote = h('div', { class: 'inherit-note' },
-        h('span', { text: `${plural(moving.length, 'session changes', 'sessions change')} to ${s.protocol === 'ssh' ? 'SSH' : 'telnet'}; a port that was the default becomes the new default.${serials ? ` ${plural(serials, 'serial session stays', 'serial sessions stay')} as ${serials === 1 ? 'it is' : 'they are'}.` : ''}${s.protocol === 'telnet' ? ' Telnet sends the login and everything you type in clear text.' : ''}` }),
+        h('span', { text: `${plural(moving.length, 'session changes', 'sessions change')} to ${s.protocol === 'ssh' ? 'SSH' : 'telnet'}; a port that was the default becomes the new default.${serials ? ` ${plural(serials, 'serial or local session stays', 'serial and local sessions stay')} as ${serials === 1 ? 'it is' : 'they are'}.` : ''}${s.protocol === 'telnet' ? ' Telnet sends the login and everything you type in clear text.' : ''}` }),
         withLogin ? check(`Remove the automation rules that type the login (<USER>, <PASS>) from ${plural(withLogin, 'session', 'sessions')}`, h('input', { type: 'checkbox', checked: dropLogin, on: { change: e => (dropLogin = e.target.checked) } }), 'SSH logs in itself, and they would answer a later “Password:” prompt (enable, say).') : null);
     } else if (multi && serials && net.length) {
-      protoNote = h('div', { class: 'inherit-note', text: `${plural(serials, 'serial session keeps', 'serial sessions keep')} its connection type.` });
+      protoNote = h('div', { class: 'inherit-note', text: `${plural(serials, 'serial or local session keeps', 'serial and local sessions keep')} its connection type.` });
     }
     const out = [h('h3', { text: 'Connection' }), field('Name', name), h('div', { class: 'grid2' }, field('Group', parent), h('div', { class: 'field' }, h('span', { text: 'Protocol' }), proto, protoNote)), field('Description', desc),
       field('Tags (comma separated)', tags, `Labels across folders, for example CORE in every site. A tag opens all its sessions at once and pre-selects them for Type to many.${known.length ? ` Existing: ${known.join(', ')}` : ''}`),
       tagsMode,
       h('datalist', { id: 'tag-names' }, ...known.map(k => h('option', { value: k })))];
-    if (s.protocol === 'serial') {
+    if (s.protocol === 'local' && multi) {
+      out.push(h('p', { class: 'hint', style: { color: 'var(--muted)' }, text: 'What each local session runs (shell, container or pod) stays its own.' }));
+    } else if (s.protocol === 'local') {
+      out.push(...localFields());
+    } else if (s.protocol === 'serial') {
       const dev = h('input', { type: 'text', value: s.serial.device, list: 'serial-ports', spellcheck: false, placeholder: navigator.platform.startsWith('Win') ? 'COM3' : '/dev/ttyUSB0', on: { input: e => (s.serial.device = e.target.value.trim()) } });
       const dl = h('datalist', { id: 'serial-ports' });
       const scan = async () => {
@@ -519,10 +526,60 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     return out;
   }
 
+  // localFields: what a local session runs.
+  function localFields() {
+    const lo = s.local;
+    const kind = seg([
+      { value: 'shell', label: 'Shell on this computer', icon: portGlyph('local') },
+      { value: 'docker', label: 'Docker container', icon: portGlyph('local', 'docker') },
+      { value: 'kubectl', label: 'Kubernetes pod', icon: portGlyph('local', 'kubectl') },
+    ], lo.kind, v => { lo.kind = v; show(current); });
+    const text = (key, placeholder) => h('input', { type: 'text', value: lo[key] || '', spellcheck: false, placeholder, class: 'mono-input', on: { input: e => (lo[key] = e.target.value.trim()) } });
+    const out = [h('div', { class: 'field' }, h('span', { text: 'Runs' }), kind)];
+    if (lo.kind === 'shell') {
+      const win = navigator.platform.startsWith('Win');
+      const names = win ? [['', 'PowerShell (Windows)'], ['pwsh', 'PowerShell 7'], ['cmd', 'Command Prompt'], ['wsl', 'WSL (Linux)'], ['bash', 'bash (Git Bash, MSYS)']]
+        : [['', 'Your login shell'], ['bash', 'bash'], ['zsh', 'zsh'], ['fish', 'fish'], ['sh', 'sh'], ['pwsh', 'PowerShell 7']];
+      const named = names.some(([v]) => v === lo.shell);
+      const sel = h('select', {}, ...names.map(([v, t]) => h('option', { value: v, text: t })), h('option', { value: '/', text: 'Another program…' }));
+      sel.value = named ? lo.shell : '/';
+      const path = text('shell', win ? 'C:\\Program Files\\Git\\bin\\bash.exe' : '/usr/local/bin/fish');
+      const pathRow = h('label', { class: 'field mono' }, h('span', { text: 'Program (full path)' }), h('div', { class: 'with-btn' }, path,
+        h('button', { type: 'button', class: 'btn small', text: 'Browse', on: { click: async () => { const p = await api.ChooseFile('Choose the program', ''); if (p) { path.value = p; lo.shell = p; } } } })));
+      pathRow.hidden = named;
+      sel.addEventListener('change', () => {
+        pathRow.hidden = sel.value !== '/';
+        lo.shell = sel.value === '/' ? path.value.trim() : sel.value;
+      });
+      out.push(field('Shell', sel), pathRow,
+        h('label', { class: 'field mono' }, h('span', { text: 'Start in folder' }), h('div', { class: 'with-btn' }, text('dir', 'Your home folder'),
+          h('button', { type: 'button', class: 'btn small', text: 'Browse', on: { click: async () => { const p = await api.ChooseDirectory('Start in folder'); if (p) { lo.dir = p; show(current); } } } }))),
+        h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: 'A terminal on this computer with everything a session has: highlighting, logs, saved commands, Type to many and automation.' }));
+    } else {
+      const k8s = lo.kind === 'kubectl';
+      out.push(
+        h('div', { class: 'grid2' },
+          h('label', { class: 'field mono' }, h('span', { text: k8s ? 'Pod' : 'Container (name or ID)' }), text('target', k8s ? 'web-7f9c6d-abcde' : 'netbox')),
+          h('label', { class: 'field mono' }, h('span', { text: 'Context (empty = current)' }), text('context', k8s ? 'prod-eu' : 'default'))),
+        k8s ? h('div', { class: 'grid2' },
+          h('label', { class: 'field mono' }, h('span', { text: 'Namespace (empty = default)' }), text('namespace', 'default')),
+          h('label', { class: 'field mono' }, h('span', { text: 'Container in the pod (empty = default)' }), text('container', 'app'))) : null,
+        (() => {
+          const hint = h('span', { class: 'hint' });
+          const paint = () => (hint.textContent = `Runs as ${k8s ? 'kubectl exec -it … -- ' : 'docker exec -it … '}${lo.command || 'sh'}. ${k8s ? 'kubectl' : 'docker'} must be installed on this computer and signed in to the ${k8s ? 'cluster' : 'engine'}.`);
+          const cmd = text('command', 'sh');
+          cmd.addEventListener('input', paint);
+          paint();
+          return h('label', { class: 'field mono' }, h('span', { text: 'Command in the container' }), cmd, hint);
+        })());
+    }
+    return out;
+  }
+
   // Keepalive, connect timeout and anti-idle: what keeps the session open.
   function keepOpenFields() {
     const out = [h('h3', { text: 'Keeping the session open', style: { marginTop: '18px' } })];
-    if (s.protocol !== 'serial') {
+    if (s.protocol === 'ssh' || s.protocol === 'telnet') {
       const ka = h('input', { type: 'number', min: 0, max: 600, value: s.keepAlive || 0, disabled: s.protocol !== 'ssh', on: { input: e => (s.keepAlive = Math.max(0, +e.target.value || 0)) } });
       const ct = h('input', { type: 'number', min: 1, max: 300, value: s.connectTimeout || 15, on: { input: e => (s.connectTimeout = +e.target.value) } });
       out.push(h('div', { class: 'grid2' },
@@ -860,6 +917,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
         const out = structuredClone(n);
         const o = out.session;
         if (o.protocol !== 'serial') delete o.serial; else { o.host = ''; o.port = 0; }
+        if (o.protocol !== 'local') delete o.local; else { o.host = ''; o.port = 0; o.jump = []; o.jumpVia = ''; o.credentialId = ''; }
         if (o.protocol !== 'ssh') o.auth = '';
         if (o.protocol === 'serial') { o.jump = []; o.jumpVia = ''; }
         if (o.jumpVia) { o.jump = []; }

@@ -111,7 +111,7 @@ export function inherited(parentId, field) {
 // colorOf returns the colour a node shows (its own or its group's).
 // Connection types this version can open. Sessions of other types come from
 // a newer YACM: they are kept and shown, but cannot be opened or edited here.
-export const KNOWN_PROTOCOLS = ['ssh', 'telnet', 'serial'];
+export const KNOWN_PROTOCOLS = ['ssh', 'telnet', 'serial', 'local'];
 export function isNewerType(n) {
   return !!(n && !n.isGroup && n.session && !KNOWN_PROTOCOLS.includes(n.session.protocol));
 }

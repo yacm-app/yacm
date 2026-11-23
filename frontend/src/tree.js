@@ -2,7 +2,7 @@
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
 import { api, state, reload, colorOf, effectiveLogin, effectiveJump, teamLibOf, isNewerType, runtime } from './api.js';
-import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC, fitMiddle } from './ui.js';
+import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC, fitMiddle, localLabel } from './ui.js';
 import { looksLikeAddress } from './switcher.js';
 import { showSidebar } from './activity.js';
 import { SORT_LABELS, ownSort, sortOf, inheritedSort } from './foldersort.js';
@@ -169,6 +169,7 @@ export function initTree(h_) {
     contextMenu(e.clientX, e.clientY, [
       { label: 'New session', action: () => hooks.newSession('') },
       { label: 'New group', action: () => hooks.newGroup('') },
+      { label: 'Open a local terminal', action: () => hooks.quickConnect('local://'), title: 'A shell on this computer, not saved (local:// in the search field does the same)' },
       sortMenu(''),
       '-',
       { label: 'Import sessions…', action: () => hooks.importHere() },
@@ -278,6 +279,7 @@ export function hostOf(n) {
   const s = n.session;
   if (!s) return '';
   if (s.protocol === 'serial') return s.serial?.device || '';
+  if (s.protocol === 'local') return localLabel(s.local);
   return s.host + (s.port && s.port !== (s.protocol === 'ssh' ? 22 : 23) ? ':' + s.port : '');
 }
 
@@ -343,7 +345,7 @@ export function render() {
       for (const n of favs) {
         const color = colorOf(n);
         const row = h('div', { class: `row session fav${isNewerType(n) ? ' newer' : ''}${state.selected === n.id ? ' selected' : ''}`, role: 'treeitem', draggable: 'false', dataset: { id: n.id }, style: { paddingLeft: '24px' } },
-          h('span', { class: 'caret' }), portGlyph(n.session?.protocol),
+          h('span', { class: 'caret' }), portGlyph(n.session?.protocol, n.session?.local?.kind),
           color ? h('span', { class: 'swatch inherited', dataset: { color } }) : null,
           h('span', { class: 'name', text: n.name }), h('span', { class: 'host', text: hostOf(n) }));
         row.addEventListener('mouseenter', () => { if (!row.title) row.title = tooltip(n); }, { once: true });
@@ -370,7 +372,7 @@ export function render() {
         style: { paddingLeft: 8 + depth * 16 + 'px' },
       },
         n.isGroup ? h('span', { class: 'caret', text: open ? '▾' : '▸' }) : h('span', { class: 'caret' }),
-        n.isGroup ? null : portGlyph(n.session?.protocol),
+        n.isGroup ? null : portGlyph(n.session?.protocol, n.session?.local?.kind),
         color ? h('span', { class: `swatch${n.color ? '' : ' inherited'}`, dataset: { color } }) : null,
         h('span', { class: 'name', text: n.name }),
         !n.isGroup && isFavorite(n.id) ? h('span', { class: 'star on', title: 'Favourite', text: '★' }) : null,

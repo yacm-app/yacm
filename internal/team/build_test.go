@@ -67,3 +67,20 @@ func TestBuildLeavesOutFolderSort(t *testing.T) {
 		}
 	}
 }
+
+// A local session is shared without a program path or a folder of yours.
+func TestBuildLocalSession(t *testing.T) {
+	root := &store.Node{ID: "g", Name: "Tools", IsGroup: true}
+	nodes := []*store.Node{root,
+		{ID: "a", ParentID: "g", Name: "git bash", Session: &store.Session{Protocol: store.ProtoLocal, Local: &store.LocalOptions{Kind: "shell", Shell: "/opt/tools/bash", Dir: "/home/jsmith/src"}}},
+		{ID: "b", ParentID: "g", Name: "netbox", Session: &store.Session{Protocol: store.ProtoLocal, Local: &store.LocalOptions{Kind: "docker", Target: "netbox", Command: "bash"}}},
+	}
+	f, warn := Build(BuildInput{Root: root, Nodes: nodes})
+	a, b := f.Nodes[0].Session.Local, f.Nodes[1].Session.Local
+	if a.Shell != "" || a.Dir != "" || b.Target != "netbox" || b.Command != "bash" {
+		t.Fatalf("%+v %+v", a, b)
+	}
+	if !strings.Contains(strings.Join(warn, "\n"), "chosen by its path") {
+		t.Fatalf("no warning: %q", warn)
+	}
+}

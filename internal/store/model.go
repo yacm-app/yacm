@@ -20,6 +20,9 @@ const (
 	ProtoSSH    Protocol = "ssh"
 	ProtoTelnet Protocol = "telnet"
 	ProtoSerial Protocol = "serial"
+	// ProtoLocal runs a program on this computer: a shell, or a shell in a
+	// container (docker exec, kubectl exec). Settings in Session.Local.
+	ProtoLocal Protocol = "local"
 )
 
 // AuthMethod is how an SSH session authenticates.
@@ -264,6 +267,26 @@ type Serial struct {
 	Extra jsonx.Unknown `json:"-"`
 }
 
+// LocalOptions are the settings of a local session (Protocol "local").
+type LocalOptions struct {
+	// Kind: "shell" (a shell on this computer), "docker" or "kubectl".
+	Kind string `json:"kind"`
+	// Shell: "" (the system's own), a name (powershell, pwsh, cmd, wsl,
+	// bash, zsh, fish, sh) or the full path to a program.
+	Shell string `json:"shell,omitempty"`
+	Dir   string `json:"dir,omitempty"` // starting folder of a shell; "" = home
+	// Target is the container (docker) or the pod (kubectl).
+	Target    string `json:"target,omitempty"`
+	Namespace string `json:"namespace,omitempty"` // kubectl
+	Container string `json:"container,omitempty"` // kubectl: container in the pod
+	Context   string `json:"context,omitempty"`   // docker or kubectl context
+	// Command runs in the container; "" = sh.
+	Command string `json:"command,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
 // Session is the connection definition of a non-group node.
 type Session struct {
 	Protocol Protocol `json:"protocol"`
@@ -295,6 +318,8 @@ type Session struct {
 	KeepName bool `json:"keepName,omitempty"`
 
 	Serial *Serial `json:"serial,omitempty"`
+	// Local: what a local session runs (Protocol "local").
+	Local *LocalOptions `json:"local,omitempty"`
 
 	Expect        []ExpectRule   `json:"expect,omitempty"`
 	ExpectTimeout int            `json:"expectTimeout,omitempty"` // default per rule, seconds

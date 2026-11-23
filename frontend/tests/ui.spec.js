@@ -1458,7 +1458,7 @@ test('editing sessions together switches telnet to SSH and offers to drop the te
   await expect(dlg.locator('.field', { hasText: 'Host' }).locator('input')).toBeDisabled();
   await dlg.getByRole('radio', { name: 'SSH' }).click();
   await expect(dlg).toContainText('2 sessions change to SSH');
-  await expect(dlg).toContainText('1 serial session stays');
+  await expect(dlg).toContainText('1 serial or local session stays');
   await expect(dlg).toContainText('from 1 session');
   await dlg.getByRole('button', { name: 'Save sessions' }).click();
   const sum = page.getByRole('dialog', { name: 'Change 1 setting in 3 sessions?' });
@@ -1752,8 +1752,34 @@ test('editing sessions together: opening every section changes nothing', async (
     await dlg.locator('.editor > nav button', { hasText: sec }).click();
   }
   await expect(dlg.locator('.editor > nav button.changed')).toHaveCount(0);
+  await expect(dlg).not.toContainText('null');
   await dlg.getByRole('button', { name: 'Save sessions' }).click();
   await expect(dlg).toContainText('Nothing was changed.');
   expect(await calls(page, 'PatchSessions')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a local session runs a shell or a container shell, and the tree opens a local terminal', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'New session' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New session' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('netbox shell');
+  await dlg.getByRole('radio', { name: 'Local' }).click();
+  await expect(dlg.getByRole('button', { name: 'Authentication' })).toBeDisabled();
+  await dlg.getByRole('radio', { name: 'Docker container' }).click();
+  await dlg.locator('label.field', { hasText: 'Container (name or ID)' }).locator('input').fill('netbox');
+  await dlg.locator('label.field', { hasText: 'Command in the container' }).locator('input').fill('bash');
+  await expect(dlg).toContainText('Runs as docker exec -it … bash');
+  await dlg.getByRole('button', { name: 'Create session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved.protocol).toBe('local');
+  expect(saved.local).toMatchObject({ kind: 'docker', target: 'netbox', command: 'bash' });
+  expect(saved.host).toBe('');
+  expect(saved.serial).toBeUndefined();
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'Open a local terminal' }).click();
+  await expect.poll(async () => (await calls(page, 'Connect')).at(-1)?.args[0].quick).toBe('local://');
+  await expect(page.locator('.tab', { hasText: 'local shell' })).toBeVisible();
   expect(errors).toEqual([]);
 });

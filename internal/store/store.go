@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yacm-app/yacm/internal/jsonx"
+	"github.com/yacm-app/yacm/internal/localterm"
 )
 
 // schemaVersion 2 added credential profiles, group defaults and colours.
@@ -450,6 +451,15 @@ func Validate(n *Node) error {
 		if ss.Serial.StopBits == "" {
 			ss.Serial.StopBits = "1"
 		}
+	case ProtoLocal:
+		if ss.Local == nil {
+			return errors.New("choose what the local session runs")
+		}
+		lo := ss.Local
+		if err := localterm.Validate(localterm.Options{Kind: lo.Kind, Shell: lo.Shell, Dir: lo.Dir, Target: lo.Target, Namespace: lo.Namespace, Container: lo.Container, Context: lo.Context, Command: lo.Command}); err != nil {
+			return err
+		}
+		ss.Host, ss.Port = "", 0
 	case "":
 		return errors.New("connection type is required")
 	default:
@@ -468,6 +478,11 @@ func Validate(n *Node) error {
 	}
 	if ss.Protocol != ProtoSSH && ss.Protocol != ProtoTelnet {
 		ss.JumpVia, ss.Jump = "", nil
+	}
+	if ss.Protocol != ProtoLocal {
+		ss.Local = nil
+	} else {
+		ss.Tunnels, ss.Proxy = nil, nil
 	}
 	if ss.JumpVia != "" && ss.JumpVia == n.ID {
 		return errors.New("a session cannot be its own jump host")

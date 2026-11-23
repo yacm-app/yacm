@@ -292,6 +292,10 @@ func (f *File) check() error {
 			// never point at someone else's files.
 			ss.Before, ss.After = nil, nil
 			ss.KeyPath, ss.CertPath, ss.LogDir = "", "", ""
+			store.DisarmLocal(n) // no program by its path
+			if ss.Local != nil {
+				ss.Local.Dir = ""
+			}
 			// No proxy logins (they could only name someone's own profile) and
 			// no agent forwarding to hosts the library's editors may run.
 			if ss.Proxy != nil {
@@ -495,6 +499,12 @@ func Build(in BuildInput) (*File, []string) {
 				ss.Auth = store.AuthAsk
 			}
 			ss.KeyPath, ss.CertPath, ss.LogDir = "", "", ""
+			if store.DisarmLocal(&n) {
+				warn = append(warn, n.Name+": a shell chosen by its path is not shared; in the library it opens each person's own shell")
+			}
+			if ss.Local != nil {
+				ss.Local.Dir = "" // a folder on your computer
+			}
 			if ss.JumpVia != "" && ss.JumpVia != store.Inherit && !inside[ss.JumpVia] {
 				warn = append(warn, n.Name+": the jump host session is not inside this group, so it was left out (move it into the group to publish it too)")
 				ss.JumpVia = ""

@@ -8,7 +8,7 @@ formats are in [import-export.md](import-export.md), security in
 - [Getting started](#getting-started)
 - [Sessions, groups and finding them](#sessions-groups-and-finding-them)
 - [Logins](#logins)
-- [Connections: SSH, telnet, serial, jump hosts](#connections-ssh-telnet-serial-jump-hosts)
+- [Connections: SSH, telnet, serial, local, jump hosts](#connections-ssh-telnet-serial-local-jump-hosts)
 - [Files and file servers](#files-and-file-servers)
 - [Tunnels and proxies](#tunnels-and-proxies)
 - [Working in the terminal](#working-in-the-terminal)
@@ -120,7 +120,7 @@ Hovering shows each label.
 - **Local commands** before connecting and after disconnecting (optionally
   confirmed), with `YACM_HOST`, `YACM_PORT`, `YACM_USER` and `YACM_NAME` set.
 
-## Connections: SSH, telnet, serial, jump hosts
+## Connections: SSH, telnet, serial, local, jump hosts
 
 - **SSH** uses an embedded client (`golang.org/x/crypto/ssh`), so it behaves
   the same on every operating system:
@@ -152,6 +152,17 @@ Hovering shows each label.
 - **Serial consoles**: COM ports and `/dev/ttyUSB*`, USB adapters listed with
   their product name, any baud rate, parity and stop bits, and *Break* in the
   status bar for ROMMON and password recovery.
+- **Local terminals**: a session of type *Local* opens a shell on this
+  computer in a tab (PowerShell, PowerShell 7, Command Prompt, WSL or Git
+  Bash on Windows; your login shell, bash, zsh or fish on macOS and Linux; or
+  any program by its path), or a shell in a container: *Docker container*
+  (`docker exec -it`) and *Kubernetes pod* (`kubectl exec -it`, with
+  namespace, container and context). They get everything a session has:
+  highlighting, logs, saved commands, Type to many and automation. Right
+  click the empty space below the tree > *Open a local terminal*, or type
+  `local://` in the search field, for one that is not saved. A local session
+  from someone else's file (a `.yacm` import or a team library) never runs a
+  program by its path; it opens your own shell instead.
 - **Reconnect after a reload**: when a session drops after `reload`,
   `reboot`, `request system reboot`, `install … activate` and the like, YACM
   tries the device every few seconds (through its jump host) and reconnects

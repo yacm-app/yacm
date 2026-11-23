@@ -92,7 +92,8 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 	if window == 0 {
 		window = hostnameWindow
 	}
-	hostChecked := false
+	// A local shell or container is not a device to name.
+	hostChecked := t.node.Session != nil && t.node.Session.Protocol == store.ProtoLocal
 	for {
 		select {
 		case <-ctx.Done():
