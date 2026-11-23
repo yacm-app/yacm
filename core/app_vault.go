@@ -40,7 +40,7 @@ func (a *App) UnlockVault(password string) error {
 }
 
 // LockVault forgets the key. Running sessions keep running.
-func (a *App) LockVault() { a.vault.Lock() }
+func (a *App) LockVault() { a.vault.Lock(); a.pm.lock() }
 
 // ChangeMasterPassword re-encrypts the vault.
 func (a *App) ChangeMasterPassword(oldPw, newPw string) error {

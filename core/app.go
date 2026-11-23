@@ -58,6 +58,10 @@ type tab struct {
 	waitCancel context.CancelFunc // stops waiting for the device
 	tun        *tabTunnels        // SSH port forwards
 	capture    *capture           // command output going to a file (capture.go)
+	// onward goes on from the jump host by a typed command (onward.go);
+	// pending is the automation that starts once the device is reached.
+	onward  *onwardWatch
+	pending *expect.Engine
 }
 
 // App is bound to the frontend.
@@ -78,6 +82,8 @@ type App struct {
 
 	promptMu sync.Mutex
 	prompts  map[string]chan PromptAnswer
+
+	pm pwManagers // KeePass and Bitwarden for credential profiles (sources.go)
 
 	filesMu    sync.Mutex
 	files      map[string]*filesConn   // open device file systems (Files tabs, Send/Get file)
@@ -235,6 +241,7 @@ func (a *App) shutdown(ctx context.Context) {
 		a.closeConn(t, false)
 	}
 	a.vault.Lock()
+	a.pm.lock()
 	a.lock.release()
 }
 

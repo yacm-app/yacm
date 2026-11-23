@@ -1,0 +1,42 @@
+{
+    "version": "1.1.0",
+    "description": "SSH, telnet and serial connection manager for network engineers",
+    "homepage": "https://yacm.app",
+    "license": "GPL-3.0-or-later",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/yacm-app/yacm/releases/download/v1.1.0/yacm-1.1.0-windows-x64.zip",
+            "hash": "1e7b52e9444e4ac23030f732bcc037ac75397f44433f70e62383591cfeb838f0",
+            "extract_dir": "yacm-1.1.0-windows-x64"
+        },
+        "arm64": {
+            "url": "https://github.com/yacm-app/yacm/releases/download/v1.1.0/yacm-1.1.0-windows-arm64.zip",
+            "hash": "37da834f1f38814c39ac324e3051ac4a31e0196ca735fb50027c86aaa3941a61",
+            "extract_dir": "yacm-1.1.0-windows-arm64"
+        }
+    },
+    "shortcuts": [
+        [
+            "YACM.exe",
+            "YACM"
+        ]
+    ],
+    "checkver": {
+        "github": "https://github.com/yacm-app/yacm"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/yacm-app/yacm/releases/download/v$version/yacm-$version-windows-x64.zip",
+                "extract_dir": "yacm-$version-windows-x64"
+            },
+            "arm64": {
+                "url": "https://github.com/yacm-app/yacm/releases/download/v$version/yacm-$version-windows-arm64.zip",
+                "extract_dir": "yacm-$version-windows-arm64"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}

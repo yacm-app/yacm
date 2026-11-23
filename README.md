@@ -110,9 +110,14 @@ hardware, get the separate demo download for your system
   revision check, and a warning when a session's target changes.
 - **Credential profiles and group defaults**: logins, jump hosts, algorithm
   profiles and colours inherited through groups and subgroups.
-- **Edit many sessions at once**: login, jump host, algorithms, port, group,
-  tags, logging, colours, telnet or SSH and more for a selection or a whole
-  group; cut, copy and paste of sessions and groups with their passwords.
+- **Passwords from KeePass or Bitwarden** for credential profiles, read
+  when needed and never written.
+- **Local terminals and containers**: PowerShell, cmd, WSL, bash or zsh on
+  this computer, `docker exec` and `kubectl exec`, in tabs like any session.
+- **Edit many sessions at once** in the same editor as one: every setting,
+  automation rules too (add to each, replace or remove), for a selection or
+  a whole group; folders that keep themselves sorted; cut, copy and paste of
+  sessions and groups with their passwords.
 - **Find among thousands**: one field filters the tree and connects (also to
   addresses nothing saved has); *Go to session* ranks matches and remembers
   what you opened last. Tags, favourites and colours for production and lab.
@@ -132,6 +137,8 @@ hardware, get the separate demo download for your system
   hosts too.
 - **Telnet** and **serial consoles** (USB adapters by name, any line
   settings, break for ROMMON and password recovery).
+- **IPMI Serial-over-LAN**: a server's serial console through its BMC
+  (iDRAC, iLO, any IPMI 2.0 BMC), with no web page or Java.
 - **Login automation**: wait-for/send rules with hidden values in the vault,
   including a Cisco enable preset.
 - **Reconnect after a reload** and **anti-idle** that types `!` only at a

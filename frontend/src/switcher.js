@@ -13,7 +13,7 @@ const LIMIT = 60;
 // An entry the user typed that looks like an address gets a quick connect.
 /** @param {string} q */
 export function looksLikeAddress(q) {
-  if (/^(ssh|telnet|serial):\/\//i.test(q)) return true;
+  if (/^(ssh|telnet|serial|local):\/\//i.test(q)) return true;
   if (/\s/.test(q)) return false;
   return /@/.test(q) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(q) || /^[\w-]+(\.[\w-]+)+(:\d+)?$/.test(q) || /^\[?[0-9a-f:]+:[0-9a-f:]*\]?(:\d+)?$/i.test(q);
 }
@@ -83,7 +83,7 @@ export function rowEl(r) {
   return r.kind === 'quick'
     ? h('li', { role: 'option' }, h('span', { class: 't' }, 'Quick connect to ', h('b', { text: r.spec })), h('span', { class: 'f', text: 'new connection' }))
     : h('li', { role: 'option', class: isNewerType(r.e.n) ? 'newer' : '' },
-      h('span', { class: 't' }, portGlyph(r.e.n.session.protocol), r.e.n.name),
+      h('span', { class: 't' }, portGlyph(r.e.n.session.protocol, r.e.n.session.local?.kind), r.e.n.name),
       h('span', { class: 'f', text: r.e.n.session.host || r.e.n.session.serial?.device || '' }),
       r.e.path || r.e.n.session.clusters?.length ? h('code', { text: [r.e.path, ...(r.e.n.session.clusters || []).map(c => `#${c}`)].filter(Boolean).join('  ') }) : null);
 }

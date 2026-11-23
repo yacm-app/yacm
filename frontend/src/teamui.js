@@ -208,7 +208,7 @@ export function publishDialog(groupId, after) {
     const own = [];
     const walk = pid => (state.children.get(pid) || []).forEach(n => {
       if (n.isGroup) walk(n.id);
-      else if (n.session && n.session.protocol !== 'serial' && !effectiveLogin(n).cred) own.push(n);
+      else if (n.session && n.session.protocol !== 'serial' && n.session.protocol !== 'local' && !effectiveLogin(n).cred) own.push(n);
     });
     walk(sel.value);
     const users = [...new Set(own.map(n => n.session.user).filter(Boolean))];

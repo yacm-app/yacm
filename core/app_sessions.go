@@ -20,6 +20,7 @@ import (
 	"github.com/yacm-app/yacm/internal/applog"
 	"github.com/yacm-app/yacm/internal/expect"
 	"github.com/yacm-app/yacm/internal/localcmd"
+	"github.com/yacm-app/yacm/internal/localterm"
 	"github.com/yacm-app/yacm/internal/logmask"
 	"github.com/yacm-app/yacm/internal/serialconn"
 	"github.com/yacm-app/yacm/internal/sshconn"
@@ -87,12 +88,16 @@ type ConnectRequest struct {
 var (
 	quickRe  = regexp.MustCompile(`^(?:(ssh|telnet)://)?(?:([^@\s]+)@)?(\[[0-9A-Fa-f:.%]+\]|[A-Za-z0-9._-]+)(?::(\d{1,5}))?$`)
 	serialRe = regexp.MustCompile(`^serial://([^?\s]+)(?:\?baud=(\d+))?$`)
+	localRe  = regexp.MustCompile(`^local://([a-z0-9]*)$`)
 )
 
 func parseQuick(s string) (*store.Node, error) {
 	s = strings.TrimSpace(s)
 	var n *store.Node
-	if m := serialRe.FindStringSubmatch(s); m != nil {
+	if m := localRe.FindStringSubmatch(s); m != nil {
+		lo := &store.LocalOptions{Kind: localterm.KindShell, Shell: m[1]}
+		n = &store.Node{Name: localterm.Label(localterm.Options{Kind: lo.Kind, Shell: lo.Shell}), Session: &store.Session{Protocol: store.ProtoLocal, Local: lo}}
+	} else if m := serialRe.FindStringSubmatch(s); m != nil {
 		baud := 9600
 		if m[2] != "" {
 			baud, _ = strconv.Atoi(m[2])
@@ -204,6 +209,9 @@ func (a *App) ConnectCluster(name string, cols, rows int) ([]string, error) {
 }
 
 func (a *App) secret(name string) string {
+	if v, ok := a.managedSecret(name); ok {
+		return v
+	}
 	v, _ := a.vault.Get(name)
 	return v
 }
@@ -271,12 +279,25 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	if !a.vault.Unlocked() && a.vault.Exists() {
 		a.tabLog(t, "vault is locked: stored passwords are not available, you will be asked")
 	}
+	a.unlockForSession(ctx, t, eff)
 
 	var c conn
 	summary := ""
 	timeout := time.Duration(ss.ConnectTimeout) * time.Second
+	t.mu.Lock()
+	t.onward, t.pending = nil, nil
+	t.mu.Unlock()
 	switch ss.Protocol {
-	case store.ProtoSSH:
+	case store.ProtoSSH, store.ProtoTelnet:
+		if eff.Onward == "" {
+			break
+		}
+		c, summary, err = a.dialOnward(ctx, t, node, eff, timeout)
+	}
+	switch {
+	case c != nil || err != nil:
+		// connected (or failed) through a command on the jump host
+	case ss.Protocol == store.ProtoSSH:
 		hops := a.jumpHops(t, node, eff)
 		if eff.Credential != "" {
 			a.tabLog(t, "login: credential profile %q", eff.Credential)
@@ -306,7 +327,7 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = sc, sc.Summary()
 		}
-	case store.ProtoTelnet:
+	case ss.Protocol == store.ProtoTelnet:
 		if len(eff.Hops) > 0 {
 			// Through SSH jump hosts: a forwarded TCP channel to the device.
 			hops := a.jumpHops(t, node, eff)
@@ -345,13 +366,44 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = tc, "telnet · no encryption"
 		}
-	case store.ProtoSerial:
+	case ss.Protocol == store.ProtoSerial:
 		s := *ss.Serial
 		a.tabLog(t, "opening %s at %d %d%s%s…", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
 		var pc *serialconn.Conn
 		pc, err = serialconn.Open(s)
 		if err == nil {
 			c, summary = pc, fmt.Sprintf("serial %s · %d %d%s%s", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
+		}
+	case ss.Protocol == store.ProtoIPMI:
+		cipher := 0
+		if ss.IPMI != nil {
+			cipher = ss.IPMI.CipherSuite
+		}
+		pass := a.secret(eff.PasswordKey)
+		if pass == "" {
+			p := tabPrompter{a, t.id, node.Name}
+			key := a.savableKey(node, eff.PasswordKey)
+			var save bool
+			pass, save, err = p.Secret(ctx, sshconn.SecretRequest{Kind: "password", Title: "BMC password", Message: fmt.Sprintf("Password of %s on the BMC %s", eff.User, ss.Host), CanSave: key != ""})
+			if err == nil && save && key != "" {
+				_ = a.vault.Set(key, pass)
+			}
+		}
+		if err == nil {
+			a.tabLog(t, "connecting to %s:%d (IPMI Serial-over-LAN)…", ss.Host, ss.Port)
+			var sc *solConn
+			sc, err = dialSOL(ctx, ss.Host, ss.Port, eff.User, pass, cipher, timeout)
+			if err == nil {
+				c, summary = sc, "IPMI Serial-over-LAN · "+ss.Host
+			}
+		}
+	case ss.Protocol == store.ProtoLocal:
+		o := localOptions(ss)
+		a.tabLog(t, "starting %s…", localterm.Label(o))
+		var lc *localterm.Conn
+		lc, err = localterm.Start(o, t.cols, t.rows)
+		if err == nil {
+			c, summary = lc, localterm.Label(o)
 		}
 	default:
 		err = fmt.Errorf("unsupported protocol %q", ss.Protocol)
@@ -394,9 +446,16 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		eng := expect.New(rules, func(b []byte) error { t.touchInput(); _, err := c.Write(b); return err },
 			func(ev expect.Event) { a.emit("tab:expect", map[string]any{"tabId": t.id, "event": ev}) })
 		t.mu.Lock()
-		t.engine = eng
+		onward := t.onward != nil
+		if onward {
+			t.pending = eng // starts once the device is reached
+		} else {
+			t.engine = eng
+		}
 		t.mu.Unlock()
-		eng.Start()
+		if !onward {
+			eng.Start()
+		}
 	}
 	go a.watchSession(ctx, t)
 	if sc, ok := c.(*sshconn.Conn); ok {
@@ -404,10 +463,14 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	}
 
 	buf := make([]byte, 32*1024)
+	failMsg := ""
 	for {
 		n, rerr := c.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
+			if msg := a.feedOnward(t, c, chunk); msg != "" {
+				failMsg = msg
+			}
 			t.mu.Lock()
 			cp := t.capture
 			t.mu.Unlock()
@@ -445,7 +508,11 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	if ctx.Err() != nil {
 		msg = "disconnected"
 	}
-	a.setState(t, "closed", msg)
+	if failMsg != "" && ctx.Err() == nil {
+		a.setState(t, "error", failMsg)
+	} else {
+		a.setState(t, "closed", msg)
+	}
 	a.afterCommands(t)
 	if ctx.Err() == nil {
 		a.afterClose(t)
@@ -680,6 +747,9 @@ func (a *App) openLog(t *tab) *os.File {
 	}
 	if n.Session.Protocol == store.ProtoSerial && n.Session.Serial != nil {
 		v.Host = n.Session.Serial.Device
+	}
+	if n.Session.Protocol == store.ProtoLocal && n.Session.Local != nil {
+		v.Host = localTarget(n.Session.Local)
 	}
 	if t.eff != nil {
 		v.User = t.eff.User

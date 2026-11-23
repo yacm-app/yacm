@@ -93,6 +93,9 @@ func (k *KnownHosts) check(hostname string, remote net.Addr, key ssh.PublicKey) 
 			if cb, err = k.readableLines(f); err != nil {
 				continue // unreadable file: ignore rather than block
 			}
+		} else {
+			// Newer parsers skip such lines themselves: still say so.
+			k.warnUnreadable(f)
 		}
 		err = cb(hostname, remote, key)
 		if err == nil {
@@ -155,19 +158,7 @@ func (k *KnownHosts) readableLines(path string) (ssh.HostKeyCallback, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(bad) > 0 && k.Warn != nil {
-		key := path
-		if st, err := os.Stat(path); err == nil {
-			key = fmt.Sprintf("%s|%d|%d", path, st.Size(), st.ModTime().UnixNano())
-		}
-		if k.warned == nil {
-			k.warned = map[string]bool{}
-		}
-		if !k.warned[key] {
-			k.warned[key] = true
-			k.Warn(fmt.Sprintf("%s: line %s cannot be read and is ignored; the other host keys in it are still checked", path, strings.Join(bad, ", ")))
-		}
-	}
+	k.warnBad(path, bad)
 	tmpName := tmp.Name()
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		err := cb(hostname, remote, key)
@@ -181,6 +172,42 @@ func (k *KnownHosts) readableLines(path string) (ssh.HostKeyCallback, error) {
 		}
 		return err
 	}, nil
+}
+
+// warnUnreadable reports the lines of a file the parser cannot read.
+func (k *KnownHosts) warnUnreadable(path string) {
+	if k.Warn == nil {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var bad []string
+	for i, l := range strings.Split(string(data), "\n") {
+		if !LineReadable(l) {
+			bad = append(bad, fmt.Sprint(i+1))
+		}
+	}
+	k.warnBad(path, bad)
+}
+
+// warnBad warns once per version of the file about lines that are ignored.
+func (k *KnownHosts) warnBad(path string, bad []string) {
+	if len(bad) == 0 || k.Warn == nil {
+		return
+	}
+	key := path
+	if st, err := os.Stat(path); err == nil {
+		key = fmt.Sprintf("%s|%d|%d", path, st.Size(), st.ModTime().UnixNano())
+	}
+	if k.warned == nil {
+		k.warned = map[string]bool{}
+	}
+	if !k.warned[key] {
+		k.warned[key] = true
+		k.Warn(fmt.Sprintf("%s: line %s cannot be read and is ignored; the other host keys in it are still checked", path, strings.Join(bad, ", ")))
+	}
 }
 
 // LineReadable reports whether the known_hosts parser used for the host key

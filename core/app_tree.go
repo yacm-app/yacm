@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yacm-app/yacm/internal/applog"
+	"github.com/yacm-app/yacm/internal/localterm"
 	"github.com/yacm-app/yacm/internal/sshconn"
 	"github.com/yacm-app/yacm/internal/store"
 	"github.com/yacm-app/yacm/internal/vault"
@@ -429,6 +430,9 @@ func (a *App) SessionAddresses(ids []string) []string {
 }
 
 func sessionAddress(s *store.Session, user string) string {
+	if s.Protocol == store.ProtoLocal && s.Local != nil {
+		return localterm.Label(localOptions(s))
+	}
 	if s.Protocol == store.ProtoSerial {
 		if s.Serial == nil {
 			return s.Host
@@ -439,7 +443,7 @@ func sessionAddress(s *store.Session, user string) string {
 		return s.Serial.Device
 	}
 	host := s.Host
-	def := map[store.Protocol]int{store.ProtoSSH: 22, store.ProtoTelnet: 23}[s.Protocol]
+	def := store.DefaultPort(s.Protocol)
 	if s.Port != 0 && s.Port != def {
 		host = net.JoinHostPort(host, strconv.Itoa(s.Port))
 	}

@@ -599,6 +599,7 @@ func PlanImport(f *File, existing map[string]*store.Node, existingCreds map[stri
 		// sessions from someone else's file.
 		store.DropUnknown(n)
 		store.DisarmTunnels(n)
+		store.DisarmLocal(n)
 		if cleared := store.FromSomeoneElse(n); len(cleared) > 0 {
 			p.Report.Warnings = append(p.Report.Warnings, fmt.Sprintf("%s: left out from the file: %s (set it yourself if you trust it)", n.Name, strings.Join(cleared, ", ")))
 		}

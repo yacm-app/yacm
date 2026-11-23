@@ -50,6 +50,9 @@ func (t teamTarget) address() string {
 	if t.Protocol == string(store.ProtoSerial) {
 		s = fmt.Sprintf("serial %s", t.Host)
 	}
+	if t.Protocol == string(store.ProtoLocal) {
+		s = "local " + t.Host
+	}
 	if len(t.Jumps) > 0 {
 		s += " via " + strings.Join(t.Jumps, " → ")
 	}
@@ -92,6 +95,12 @@ func targetOf(n *store.Node, eff *store.Effective) teamTarget {
 	t := teamTarget{Protocol: string(ss.Protocol), Host: ss.Host, Port: ss.Port, Agent: ss.AgentForward, Auto: autoDigest(ss, idle), V: teamTargetV}
 	if ss.Protocol == store.ProtoSerial && ss.Serial != nil {
 		t.Host, t.Port = ss.Serial.Device, 0
+	}
+	if ss.Protocol == store.ProtoLocal && ss.Local != nil {
+		// What runs: a changed container, pod, shell or command is a
+		// changed target.
+		lo := ss.Local
+		t.Host, t.Port = strings.TrimSpace(lo.Kind+" "+lo.Context+" "+localTarget(lo)+" "+lo.Container+" "+lo.Shell+" "+lo.Command), 0
 	}
 	if p := ss.Proxy; p != nil && p.Type != "" && p.Type != "none" {
 		t.Proxy = fmt.Sprintf("%s %s:%d", p.Type, p.Host, p.Port)

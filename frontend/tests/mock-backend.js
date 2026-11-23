@@ -28,6 +28,8 @@
   let favorites = cfg.favorites || [];
   let uploads = 0;
   const servers = {};
+  const localSorts = cfg.localSorts || {};
+  const pm = { keepass: false, bitwarden: false };
   let lowPortAllowed = 1024;
   const clusters = () => {
     const c = {};
@@ -81,9 +83,22 @@
       ids.forEach(id => copy(id, parentId, true));
       return tops;
     },
+    PasswordManagerStatus: () => ({ keepassFile: settings.keepassFile || '', keepassUnlocked: pm.keepass, bitwardenUnlocked: pm.bitwarden }),
+    UnlockKeePass: pw => { if (pw !== 'kp-master') throw new Error('the KeePass database could not be opened (wrong master password or key file?)'); pm.keepass = true; return null; },
+    UnlockBitwarden: () => { pm.bitwarden = true; return null; },
+    LockPasswordManagers: () => { pm.keepass = pm.bitwarden = false; return null; },
+    CheckSecretSource: src => { if (src.ref !== 'Network/tacacs') throw new Error(`no KeePass entry "${src.ref}"`); return null; },
+    LocalFolderSorts: () => localSorts,
+    SetFolderSort: (id, sort) => {
+      const n = nodes.find(x => x.id === id);
+      if (!id || n?.library) { if (sort) localSorts[id] = sort; else delete localSorts[id]; } else if (n) { if (sort) n.sortBy = sort; else delete n.sortBy; }
+      return null;
+    },
+    SetChildOrder: (parentId, ids) => { ids.forEach((id, i) => { const n = nodes.find(x => x.id === id); if (n && (n.parentId || '') === parentId) n.order = i; }); return null; },
     SetExpanded: (id, open) => { const n = nodes.find(x => x.id === id); if (n) n.expanded = open; return null; },
     DeleteNode: id => { nodes = nodes.filter(n => n.id !== id && n.parentId !== id); return null; },
     BulkUpdate: req => req.ids.length,
+    PatchSessions: req => ({ changed: req.ids.length, skipped: [] }),
     SaveNode: n => {
       const copy = structuredClone(n);
       if (!copy.id) copy.id = `n${nodes.length + 1}`;

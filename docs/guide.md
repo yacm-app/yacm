@@ -8,7 +8,7 @@ formats are in [import-export.md](import-export.md), security in
 - [Getting started](#getting-started)
 - [Sessions, groups and finding them](#sessions-groups-and-finding-them)
 - [Logins](#logins)
-- [Connections: SSH, telnet, serial, jump hosts](#connections-ssh-telnet-serial-jump-hosts)
+- [Connections: SSH, telnet, serial, local, jump hosts](#connections-ssh-telnet-serial-local-jump-hosts)
 - [Files and file servers](#files-and-file-servers)
 - [Tunnels and proxies](#tunnels-and-proxies)
 - [Working in the terminal](#working-in-the-terminal)
@@ -50,14 +50,30 @@ Hovering shows each label.
   type, and colours (red for production, green for the lab) shown on the tab,
   the terminal edge and in the tree. Ctrl/Shift+click selects several sessions
   to connect, edit, export or delete together.
+- **Sorted folders**: right click a folder (or the empty space below the
+  tree, for the top level) > *Sort by*: name (r2 before r10), address
+  (10.0.0.9 before 10.0.0.10), connection type, opened last, or the
+  subfolders with the most sessions first. The folder stays sorted: new and
+  renamed sessions take their place. *Also its subfolders* sorts the
+  subfolders the same way unless they have a sort of their own. Dragging
+  sessions into a different order asks to turn the sorting off, and the
+  order on screen becomes yours. Team library folders and the top level keep
+  their sorting on this computer only; a team library never carries it.
 - **Group defaults**: a group gives its sessions a credential profile, a jump
   host, an SSH algorithm profile, a colour and terminal colours. Sessions set
   to *From group* use them, also in subgroups, so moving a site behind a new
   bastion is one change.
-- **Edit many sessions at once**: tick the settings to change (login, user,
-  password, jump host, algorithms, port, colour, group, tags, logging, font,
-  terminal colours, paste pause, anti-idle) and apply them to the selection or
-  to a whole group.
+- **Edit many sessions at once**: select them (or right click a group >
+  *Edit all sessions in it*) and the usual session editor opens for all of
+  them. What you change is set in each session; everything you leave alone
+  stays as it is in each. Name, address and description stay each session's
+  own. Settings that differ show the first session's value, and the top of
+  each section names them. Lists (automation rules, saved commands, tunnels,
+  tags, local commands) are added to each session's list, replace it, or
+  remove the matching entries, as you choose. A dot marks the sections you
+  changed, and a summary asks before anything is saved. SSH and telnet
+  sessions can switch type together (serial consoles stay); going to SSH can
+  remove the rules that typed the telnet login.
 - **One field to find and connect** (above the tree): typing part of a name,
   address, group or tag filters the tree. Enter connects to the session whose
   name or address is exactly what you typed (or the only match), opens a quick
@@ -86,6 +102,16 @@ Hovering shows each label.
   agent) shared by many sessions. When your directory password changes,
   change it once in the profile and every session follows. Profiles also fill
   `<USER>` and `<PASS>` in telnet and serial automation.
+- **Passwords from KeePass or Bitwarden**: a credential profile can take
+  its password from a KeePass database (`.kdbx`, with a key file if it has
+  one) or from Bitwarden (through its `bw` command line program, signed in
+  once with `bw login`) instead of the YACM vault: *Password kept in* >
+  *KeePass* or *Bitwarden*, with the entry (KeePass: `Group/Title`, a title or
+  its UUID; Bitwarden: the item's name or ID) and *Check*. The database is
+  chosen in Settings > Integrations. YACM only reads it, asks for its master
+  password when a session first needs it, and locks it with the vault; the
+  password is read each time it is needed, so a change in KeePass or
+  Bitwarden counts at once.
 - **The vault** keeps every password, passphrase and token encrypted (see
   [Security model](#security-model)). It locks after 15 idle minutes by
   default (Settings > Security) and when YACM closes; the padlock on the left
@@ -104,7 +130,7 @@ Hovering shows each label.
 - **Local commands** before connecting and after disconnecting (optionally
   confirmed), with `YACM_HOST`, `YACM_PORT`, `YACM_USER` and `YACM_NAME` set.
 
-## Connections: SSH, telnet, serial, jump hosts
+## Connections: SSH, telnet, serial, IPMI, local, jump hosts
 
 - **SSH** uses an embedded client (`golang.org/x/crypto/ssh`), so it behaves
   the same on every operating system:
@@ -131,11 +157,44 @@ Hovering shows each label.
   is changed in one place. Hops can also be entered by hand. Each hop checks
   its own host key and negotiates its own algorithm profile. Telnet sessions
   can go through SSH jump hosts too (encrypted up to the jump host).
+- **Jump hosts that do not forward** (a router, or a server with
+  `AllowTcpForwarding no`): in the jump host's own session, *Jump hosts* >
+  *When other sessions use this one as their jump host* > *Type a command*.
+  Sessions that go through it then log in to the jump host, type
+  `ssh -l <USER> -p <PORT> <HOST>` or `telnet <HOST> <PORT>` (or your own
+  command, such as `telnet <HOST> /vrf MGMT`), answer the device's user name
+  and password prompts, and start their automation once the device is
+  reached. If the jump host cannot reach the device, or the device closes the
+  connection later, the tab disconnects instead of leaving you on the jump
+  host in a tab named after the device. The session is still the device: its
+  address, tags, logs, Go to session and reload watch work as usual.
 - **Telnet** (RFC 854 with ECHO, SGA, TERMINAL-TYPE and NAWS), clearly marked
   as unencrypted.
 - **Serial consoles**: COM ports and `/dev/ttyUSB*`, USB adapters listed with
   their product name, any baud rate, parity and stop bits, and *Break* in the
   status bar for ROMMON and password recovery.
+- **IPMI Serial-over-LAN**: a session of type *IPMI SOL* opens a server's
+  serial console through its BMC (iDRAC, iLO, Supermicro or any IPMI 2.0
+  BMC) over UDP 623, without the vendor's web page or Java. The host is the
+  BMC's address, the login is the BMC user (it needs IPMI over LAN and
+  Serial-over-LAN rights, and can come from a credential profile), and the
+  cipher suite is picked automatically (17, then 3) unless you choose one.
+  The server's own login follows in the terminal, so automation rules work
+  as on a serial console. `~.` at the start of a line ends Serial-over-LAN;
+  closing the tab does too. If the BMC reports that another SOL session is
+  open, close that one first. SOL goes straight to the BMC: no jump hosts,
+  tunnels or proxy.
+- **Local terminals**: a session of type *Local* opens a shell on this
+  computer in a tab (PowerShell, PowerShell 7, Command Prompt, WSL or Git
+  Bash on Windows; your login shell, bash, zsh or fish on macOS and Linux; or
+  any program by its path), or a shell in a container: *Docker container*
+  (`docker exec -it`) and *Kubernetes pod* (`kubectl exec -it`, with
+  namespace, container and context). They get everything a session has:
+  highlighting, logs, saved commands, Type to many and automation. Right
+  click the empty space below the tree > *Open a local terminal*, or type
+  `local://` in the search field, for one that is not saved. A local session
+  from someone else's file (a `.yacm` import or a team library) never runs a
+  program by its path; it opens your own shell instead.
 - **Reconnect after a reload**: when a session drops after `reload`,
   `reboot`, `request system reboot`, `install … activate` and the like, YACM
   tries the device every few seconds (through its jump host) and reconnects

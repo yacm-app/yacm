@@ -18,6 +18,48 @@ import (
 // after dir or an SCP copy the next command finds it closed.
 var ErrConnClosed = errors.New("the SSH connection is closed")
 
+// ErrNoAnswer: the device did not answer a request for a channel.
+var ErrNoAnswer = errors.New("the device did not answer the request for a channel")
+
+// channelWait is the longest a device may take to answer a request for a
+// channel. Without it a connection whose other end went quiet (a jump host
+// that lost the device) would hold the file browser for good.
+var channelWait = 30 * time.Second
+
+// OpenSession opens a session channel on c and gives up after channelWait
+// or when ctx ends. The request stays pending on the connection: a channel
+// that opens later is closed at once.
+func OpenSession(ctx context.Context, c *ssh.Client) (*ssh.Session, error) {
+	type result struct {
+		s   *ssh.Session
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		s, err := c.NewSession()
+		done <- result{s, err}
+	}()
+	timer := time.NewTimer(channelWait)
+	defer timer.Stop()
+	late := func() {
+		go func() {
+			if r := <-done; r.s != nil {
+				_ = r.s.Close()
+			}
+		}()
+	}
+	select {
+	case r := <-done:
+		return r.s, r.err
+	case <-ctx.Done():
+		late()
+		return nil, ctx.Err()
+	case <-timer.C:
+		late()
+		return nil, fmt.Errorf("%w in %v", ErrNoAnswer, channelWait)
+	}
+}
+
 // Link is the SSH connection the file commands use.
 //
 // Commands start in parallel, each on a channel of its own. A device that

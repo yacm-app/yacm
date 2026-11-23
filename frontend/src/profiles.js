@@ -8,6 +8,25 @@ import { h, openDialog, field, seg, errMsg, toast, confirmDialog, plural } from 
 import { secretField } from './editor.js';
 
 const METHOD = { password: 'Password', publickey: 'Key file', agent: 'SSH agent', ask: 'Asked when connecting' };
+const SOURCE = { keepass: 'KeePass', bitwarden: 'Bitwarden' };
+
+// unlockManager asks for the master password of KeePass or Bitwarden.
+export function unlockManager(kind) {
+  return new Promise(resolve => {
+    const inp = h('input', { type: 'password', autocomplete: 'off' });
+    let ok = false;
+    openDialog({
+      title: `Unlock ${SOURCE[kind]}`,
+      sub: kind === 'keepass' ? state.settings.keepassFile : 'Through the Bitwarden command line program (bw).',
+      body: field('Master password', inp),
+      buttons: [{ label: 'Cancel' }, { label: 'Unlock', kind: 'primary', default: true, onClick: async () => {
+        await (kind === 'keepass' ? api.UnlockKeePass(inp.value) : api.UnlockBitwarden(inp.value));
+        ok = true;
+      } }],
+      onClose: () => resolve(ok), initialFocus: inp,
+    });
+  });
+}
 
 export function openProfiles(onChange) {
   const list = h('div', { class: 'list' });
@@ -21,7 +40,8 @@ export function openProfiles(onChange) {
     }
     for (const c of state.credentials) {
       const used = [c.sessions ? plural(c.sessions, 'session', 'sessions') : '', c.groups ? `the sessions in ${plural(c.groups, 'group', 'groups')}` : ''].filter(Boolean).join(' and ');
-      const secret = c.auth === 'password' ? (c.hasPassword ? h('span', { class: 'pill ok', text: 'password stored' }) : h('span', { class: 'pill', text: 'no password yet' }))
+      const secret = c.auth === 'password' && c.source ? h('span', { class: 'pill ok', text: `from ${SOURCE[c.source.kind] || c.source.kind}` })
+        : c.auth === 'password' ? (c.hasPassword ? h('span', { class: 'pill ok', text: 'password stored' }) : h('span', { class: 'pill', text: 'no password yet' }))
         : c.auth === 'publickey' ? h('span', { class: 'pill', text: 'key file' }) : h('span', { class: 'pill', text: METHOD[c.auth] || c.auth });
       list.append(h('div', { class: 'item' },
         h('div', { class: 'main' },
@@ -57,8 +77,34 @@ export function editProfile(c, after, preset = {}) {
   const reveal = kind => master => api.RevealSecret('', kind, p.id, master);
   const renderMethod = () => {
     methodBox.replaceChildren();
-    if (!vaultOK && (p.auth === 'password' || p.auth === 'publickey')) methodBox.append(h('p', { class: 'warning', text: 'The vault is locked, so the password cannot be stored. Unlock it first.' }));
-    if (p.auth === 'password' && vaultOK) {
+    const kind = p.auth === 'password' ? p.source?.kind || '' : '';
+    if (p.auth === 'password') {
+      const from = seg([{ value: '', label: 'YACM vault' }, { value: 'keepass', label: 'KeePass' }, { value: 'bitwarden', label: 'Bitwarden' }], kind, v => {
+        p.source = v ? { kind: v, ref: p.source?.ref || '' } : null;
+        renderMethod();
+      });
+      methodBox.append(h('div', { class: 'field' }, h('span', { text: 'Password kept in' }), from));
+    }
+    if (kind) {
+      const ref = h('input', { type: 'text', value: p.source.ref || '', spellcheck: false, class: 'mono-input',
+        placeholder: kind === 'keepass' ? 'Network/TACACS, a title, or its UUID' : 'The item’s name or ID', on: { input: e => (p.source.ref = e.target.value) } });
+      const status = h('span', { class: 'hint' });
+      const check = h('button', { type: 'button', class: 'btn small', text: 'Check', on: { click: async () => {
+        status.textContent = 'Looking…';
+        try {
+          const st = await api.PasswordManagerStatus();
+          if (!(kind === 'keepass' ? st.keepassUnlocked : st.bitwardenUnlocked) && !(await unlockManager(kind))) { status.textContent = ''; return; }
+          await api.CheckSecretSource({ kind, ref: p.source.ref.trim() });
+          status.textContent = 'Found. The password is read from there each time it is needed.';
+        } catch (e) { status.textContent = errMsg(e); }
+      } } });
+      methodBox.append(h('label', { class: 'field mono' }, h('span', { text: kind === 'keepass' ? 'KeePass entry' : 'Bitwarden item' }), h('div', { class: 'with-btn' }, ref, check), status),
+        h('p', { class: 'hint', style: { color: 'var(--faint)', marginTop: '-6px' }, text: kind === 'keepass'
+          ? `From the database in Settings > Integrations${state.settings.keepassFile ? ` (${state.settings.keepassFile})` : ', not chosen yet'}. YACM asks for its master password when a session first needs it, and locks it with the vault. Nothing is written to it.`
+          : 'Through the Bitwarden command line program (bw), signed in once with bw login. YACM asks for the master password when a session first needs it, and locks it with the vault.' }));
+    }
+    if (!vaultOK && ((p.auth === 'password' && !kind) || p.auth === 'publickey')) methodBox.append(h('p', { class: 'warning', text: 'The vault is locked, so the password cannot be stored. Unlock it first.' }));
+    if (p.auth === 'password' && vaultOK && !kind) {
       methodBox.append(secretField('Password', !!c?.hasPassword, v => (sec.password = v), c ? reveal('cred-password') : null),
         h('p', { class: 'hint', style: { color: 'var(--faint)', marginTop: '-6px' }, text: 'Used for SSH logins (also keyboard-interactive prompts) and by <PASS> in automation rules of telnet and serial sessions.' }));
     }
@@ -88,8 +134,9 @@ export function editProfile(c, after, preset = {}) {
       { label: 'Cancel' },
       { label: c ? 'Save profile' : 'Create profile', kind: 'primary', default: true, onClick: async () => {
         p.name = name.value.trim(); p.description = desc.value.trim(); p.user = user.value.trim();
-        const out = { id: p.id, name: p.name, description: p.description, user: p.user, auth: p.auth, keyPath: p.keyPath, certPath: p.certPath };
-        const saved = await api.SaveCredential(out, { password: sec.password ?? null, passphrase: sec.passphrase ?? null });
+        const source = p.auth === 'password' && p.source?.kind ? { ...p.source, ref: (p.source.ref || '').trim() } : null;
+        const out = { id: p.id, name: p.name, description: p.description, user: p.user, auth: p.auth, keyPath: p.keyPath, certPath: p.certPath, source };
+        const saved = await api.SaveCredential(out, { password: source ? null : sec.password ?? null, passphrase: sec.passphrase ?? null });
         toast(c ? `Profile ${p.name} saved.` : `Profile ${p.name} created.`);
         after && (await after(saved));
       } },
