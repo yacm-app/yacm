@@ -443,7 +443,7 @@ func sessionAddress(s *store.Session, user string) string {
 		return s.Serial.Device
 	}
 	host := s.Host
-	def := map[store.Protocol]int{store.ProtoSSH: 22, store.ProtoTelnet: 23}[s.Protocol]
+	def := store.DefaultPort(s.Protocol)
 	if s.Port != 0 && s.Port != def {
 		host = net.JoinHostPort(host, strconv.Itoa(s.Port))
 	}

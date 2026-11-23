@@ -72,6 +72,15 @@ func (v SecretSource) MarshalJSON() ([]byte, error) {
 	return jsonx.Marshal(plain(v), v.Extra)
 }
 
+func (v *IPMIOptions) UnmarshalJSON(b []byte) error {
+	type plain IPMIOptions
+	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
+}
+func (v IPMIOptions) MarshalJSON() ([]byte, error) {
+	type plain IPMIOptions
+	return jsonx.Marshal(plain(v), v.Extra)
+}
+
 func (v *Credential) UnmarshalJSON(b []byte) error {
 	type plain Credential
 	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
@@ -194,7 +203,7 @@ func (v fileFormat) MarshalJSON() ([]byte, error) {
 // opened or edited here.
 func KnownProtocol(p Protocol) bool {
 	switch p {
-	case ProtoSSH, ProtoTelnet, ProtoSerial, ProtoLocal:
+	case ProtoSSH, ProtoTelnet, ProtoSerial, ProtoLocal, ProtoIPMI:
 		return true
 	}
 	return false
@@ -221,6 +230,9 @@ func keepUnknownNode(c, old *Node) {
 		}
 		if c.Session.Local != nil && old.Session.Local != nil {
 			c.Session.Local.Extra = jsonx.Keep(c.Session.Local.Extra, old.Session.Local.Extra)
+		}
+		if c.Session.IPMI != nil && old.Session.IPMI != nil {
+			c.Session.IPMI.Extra = jsonx.Keep(c.Session.IPMI.Extra, old.Session.IPMI.Extra)
 		}
 		if c.Session.Onward != nil && old.Session.Onward != nil {
 			c.Session.Onward.Extra = jsonx.Keep(c.Session.Onward.Extra, old.Session.Onward.Extra)
@@ -267,6 +279,9 @@ func DropUnknown(n *Node) {
 	}
 	if ss.Onward != nil {
 		ss.Onward.Extra = nil
+	}
+	if ss.IPMI != nil {
+		ss.IPMI.Extra = nil
 	}
 	for i := range ss.Jump {
 		ss.Jump[i].Extra = nil
@@ -343,7 +358,7 @@ func HasUnknown(n *Node) bool {
 	if ss == nil {
 		return false
 	}
-	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) || (ss.Local != nil && len(ss.Local.Extra) > 0) || (ss.Onward != nil && len(ss.Onward.Extra) > 0) {
+	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) || (ss.Local != nil && len(ss.Local.Extra) > 0) || (ss.Onward != nil && len(ss.Onward.Extra) > 0) || (ss.IPMI != nil && len(ss.IPMI.Extra) > 0) {
 		return true
 	}
 	for _, j := range ss.Jump {

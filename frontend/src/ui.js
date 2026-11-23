@@ -366,13 +366,13 @@ export function icon(name, cls = '') {
 export function portGlyph(proto, kind = '') {
   // Only the types this version can open; a type from a newer YACM gets the
   // dashed question mark even when its shape is drawn already.
-  const known = ['ssh', 'telnet', 'serial', 'local'].includes(proto);
+  const known = ['ssh', 'telnet', 'serial', 'local', 'ipmi'].includes(proto);
   const shape = proto === 'local' && (kind === 'docker' || kind === 'kubectl') ? 'container' : proto;
   const svg = icon(known ? shape : 'newer', `port ${known ? proto : 'unknown'}`);
   return svg;
 }
 
-export const protoLabel = { ssh: 'SSH', telnet: 'Telnet', serial: 'Serial', local: 'Local' };
+export const protoLabel = { ssh: 'SSH', telnet: 'Telnet', serial: 'Serial', local: 'Local', ipmi: 'IPMI SOL' };
 
 // localLabel describes what a local session runs (as localterm.Label).
 const SHELL_NAMES = { powershell: 'PowerShell', pwsh: 'PowerShell 7', cmd: 'Command Prompt', wsl: 'WSL', bash: 'bash', zsh: 'zsh', fish: 'fish', sh: 'sh' };

@@ -1482,6 +1482,8 @@ function facts(t) {
     out.push(['Encryption', via ? `SSH up to the jump host ${via[1]}, clear text from there to the device` : 'none, telnet sends everything in clear text', true]);
   } else if (proto === 'local') {
     out.push(['Runs', t.summary.replace(/^local /, '')]);
+  } else if (proto === 'ipmi') {
+    out.push(['Console', 'IPMI Serial-over-LAN', false, 'Type ~. at the start of a line to end Serial-over-LAN.']);
   } else {
     out.push(['Line', t.summary.replace(/^serial /, '').replace(' · ', ', ')]);
   }

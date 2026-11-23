@@ -33,6 +33,7 @@
   --telnet: #e2a64b;
   --serial: #7fc6e4;
   --local: #c3a3f0;
+  --ipmi: #ec9bb6;
   --danger: #ec7d7d;
   --ok: #7cc59a;
   --warn: #e2a64b;
@@ -67,6 +68,7 @@
   --telnet: #b5730f;
   --serial: #1f86ad;
   --local: #7a4fc0;
+  --ipmi: #b23e68;
   --danger: #c43c3c;
   --c-red: #c43c3c;
   --c-orange: #bf6610;
@@ -143,6 +145,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .port.telnet { color: var(--telnet); }
 .port.serial { color: var(--serial); }
 .port.local { color: var(--local); }
+.port.ipmi { color: var(--ipmi); }
 .port.unknown { color: var(--faint); }
 .row.newer .name, .row.newer .host { color: var(--faint); }
 .badge.newer { color: var(--faint); border-style: dashed; }

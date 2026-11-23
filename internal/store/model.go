@@ -23,6 +23,9 @@ const (
 	// ProtoLocal runs a program on this computer: a shell, or a shell in a
 	// container (docker exec, kubectl exec). Settings in Session.Local.
 	ProtoLocal Protocol = "local"
+	// ProtoIPMI is a server console through IPMI Serial-over-LAN (iDRAC,
+	// iLO, any IPMI 2.0 BMC). Settings in Session.IPMI.
+	ProtoIPMI Protocol = "ipmi"
 )
 
 // AuthMethod is how an SSH session authenticates.
@@ -322,6 +325,15 @@ const (
 	DefaultOnwardTelnet = "telnet <HOST> <PORT>"
 )
 
+// IPMIOptions are the settings of an IPMI Serial-over-LAN session.
+type IPMIOptions struct {
+	// CipherSuite: the RMCP+ cipher suite (3, 17…); 0 = try the usual ones.
+	CipherSuite int `json:"cipherSuite,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
 // Session is the connection definition of a non-group node.
 type Session struct {
 	Protocol Protocol `json:"protocol"`
@@ -355,6 +367,8 @@ type Session struct {
 	Serial *Serial `json:"serial,omitempty"`
 	// Local: what a local session runs (Protocol "local").
 	Local *LocalOptions `json:"local,omitempty"`
+	// IPMI: settings of an IPMI Serial-over-LAN session.
+	IPMI *IPMIOptions `json:"ipmi,omitempty"`
 	// Onward: when this SSH session is a jump host, how sessions go on
 	// from it (nil = TCP forwarding).
 	Onward *OnwardOptions `json:"onward,omitempty"`
@@ -636,6 +650,8 @@ func DefaultPort(p Protocol) int {
 		return 22
 	case ProtoTelnet:
 		return 23
+	case ProtoIPMI:
+		return 623
 	}
 	return 0
 }

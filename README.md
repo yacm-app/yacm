@@ -137,6 +137,8 @@ hardware, get the separate demo download for your system
   hosts too.
 - **Telnet** and **serial consoles** (USB adapters by name, any line
   settings, break for ROMMON and password recovery).
+- **IPMI Serial-over-LAN**: a server's serial console through its BMC
+  (iDRAC, iLO, any IPMI 2.0 BMC), with no web page or Java.
 - **Login automation**: wait-for/send rules with hidden values in the vault,
   including a Cisco enable preset.
 - **Reconnect after a reload** and **anti-idle** that types `!` only at a

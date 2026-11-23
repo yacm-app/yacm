@@ -48,11 +48,11 @@ var patchLocked = map[string]bool{"host": true, "local": true}
 
 // Members that only apply to some connection types.
 var patchFor = map[string][]Protocol{
-	"port":           {ProtoSSH, ProtoTelnet},
+	"port":           {ProtoSSH, ProtoTelnet, ProtoIPMI},
 	"jump":           {ProtoSSH, ProtoTelnet},
 	"jumpVia":        {ProtoSSH, ProtoTelnet},
 	"proxy":          {ProtoSSH, ProtoTelnet},
-	"connectTimeout": {ProtoSSH, ProtoTelnet},
+	"connectTimeout": {ProtoSSH, ProtoTelnet, ProtoIPMI},
 	"auth":           {ProtoSSH},
 	"keyPath":        {ProtoSSH},
 	"certPath":       {ProtoSSH},
@@ -62,6 +62,7 @@ var patchFor = map[string][]Protocol{
 	"tunnels":        {ProtoSSH},
 	"onward":         {ProtoSSH},
 	"serial":         {ProtoSerial},
+	"ipmi":           {ProtoIPMI},
 }
 
 // PatchApplied reports what a patch did.
@@ -204,6 +205,15 @@ func patchOne(ss *Session, p SessionPatch, set map[string]bool, newID func() str
 		switch {
 		case k == "serial":
 			ss.Serial = mergeSerial(ss.Serial, p.Session.Serial)
+		case k == "ipmi":
+			if to := p.Session.IPMI; to != nil {
+				o := *to
+				o.Extra = nil
+				if ss.IPMI != nil {
+					o.Extra = ss.IPMI.Extra
+				}
+				ss.IPMI = &o
+			}
 		case listMembers[k]:
 			patchList(ss, k, p, p.Lists[k], newID, rules)
 		default:

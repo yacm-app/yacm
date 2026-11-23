@@ -130,7 +130,7 @@ Hovering shows each label.
 - **Local commands** before connecting and after disconnecting (optionally
   confirmed), with `YACM_HOST`, `YACM_PORT`, `YACM_USER` and `YACM_NAME` set.
 
-## Connections: SSH, telnet, serial, local, jump hosts
+## Connections: SSH, telnet, serial, IPMI, local, jump hosts
 
 - **SSH** uses an embedded client (`golang.org/x/crypto/ssh`), so it behaves
   the same on every operating system:
@@ -173,6 +173,17 @@ Hovering shows each label.
 - **Serial consoles**: COM ports and `/dev/ttyUSB*`, USB adapters listed with
   their product name, any baud rate, parity and stop bits, and *Break* in the
   status bar for ROMMON and password recovery.
+- **IPMI Serial-over-LAN**: a session of type *IPMI SOL* opens a server's
+  serial console through its BMC (iDRAC, iLO, Supermicro or any IPMI 2.0
+  BMC) over UDP 623, without the vendor's web page or Java. The host is the
+  BMC's address, the login is the BMC user (it needs IPMI over LAN and
+  Serial-over-LAN rights, and can come from a credential profile), and the
+  cipher suite is picked automatically (17, then 3) unless you choose one.
+  The server's own login follows in the terminal, so automation rules work
+  as on a serial console. `~.` at the start of a line ends Serial-over-LAN;
+  closing the tab does too. If the BMC reports that another SOL session is
+  open, close that one first. SOL goes straight to the BMC: no jump hosts,
+  tunnels or proxy.
 - **Local terminals**: a session of type *Local* opens a shell on this
   computer in a tab (PowerShell, PowerShell 7, Command Prompt, WSL or Git
   Bash on Windows; your login shell, bash, zsh or fish on macOS and Linux; or

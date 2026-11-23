@@ -374,6 +374,29 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = pc, fmt.Sprintf("serial %s · %d %d%s%s", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
 		}
+	case ss.Protocol == store.ProtoIPMI:
+		cipher := 0
+		if ss.IPMI != nil {
+			cipher = ss.IPMI.CipherSuite
+		}
+		pass := a.secret(eff.PasswordKey)
+		if pass == "" {
+			p := tabPrompter{a, t.id, node.Name}
+			key := a.savableKey(node, eff.PasswordKey)
+			var save bool
+			pass, save, err = p.Secret(ctx, sshconn.SecretRequest{Kind: "password", Title: "BMC password", Message: fmt.Sprintf("Password of %s on the BMC %s", eff.User, ss.Host), CanSave: key != ""})
+			if err == nil && save && key != "" {
+				_ = a.vault.Set(key, pass)
+			}
+		}
+		if err == nil {
+			a.tabLog(t, "connecting to %s:%d (IPMI Serial-over-LAN)…", ss.Host, ss.Port)
+			var sc *solConn
+			sc, err = dialSOL(ctx, ss.Host, ss.Port, eff.User, pass, cipher, timeout)
+			if err == nil {
+				c, summary = sc, "IPMI Serial-over-LAN · "+ss.Host
+			}
+		}
 	case ss.Protocol == store.ProtoLocal:
 		o := localOptions(ss)
 		a.tabLog(t, "starting %s…", localterm.Label(o))

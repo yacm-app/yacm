@@ -280,7 +280,7 @@ export function hostOf(n) {
   if (!s) return '';
   if (s.protocol === 'serial') return s.serial?.device || '';
   if (s.protocol === 'local') return localLabel(s.local);
-  return s.host + (s.port && s.port !== (s.protocol === 'ssh' ? 22 : 23) ? ':' + s.port : '');
+  return s.host + (s.port && s.port !== ({ ssh: 22, telnet: 23, ipmi: 623 }[s.protocol]) ? ':' + s.port : '');
 }
 
 // counts caches session counts for one render of the tree.

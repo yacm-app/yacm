@@ -1784,6 +1784,29 @@ test('a local session runs a shell or a container shell, and the tree opens a lo
   expect(errors).toEqual([]);
 });
 
+test('an IPMI session opens the server console through the BMC', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'New session' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New session' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('esx01 console');
+  await dlg.getByRole('radio', { name: 'IPMI SOL' }).click();
+  await expect(dlg.getByRole('button', { name: 'Jump hosts' })).toBeDisabled();
+  await expect(dlg.getByRole('button', { name: 'Tunnels and proxy' })).toBeDisabled();
+  await dlg.locator('label.field', { hasText: 'Host' }).locator('input').fill('10.1.1.20');
+  await expect(dlg.locator('label.field', { hasText: 'Port' }).locator('input')).toHaveValue('623');
+  await dlg.locator('.field', { hasText: 'Cipher suite' }).locator('select').selectOption('3');
+  await dlg.getByRole('button', { name: 'Authentication' }).click();
+  await expect(dlg).toContainText('The user name and password of the BMC');
+  await dlg.locator('label.field', { hasText: 'Username' }).locator('input').fill('root');
+  await dlg.getByRole('button', { name: 'Create session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved).toMatchObject({ protocol: 'ipmi', host: '10.1.1.20', port: 623, user: 'root', ipmi: { cipherSuite: 3 } });
+  expect(saved.local).toBeUndefined();
+  expect(saved.serial).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
 test('a jump host that does not forward types a command, and its sessions say so', async ({ page }) => {
   const nodes = [
     { id: 'j', parentId: '', name: 'core-rtr', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'jsmith' } },

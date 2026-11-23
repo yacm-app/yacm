@@ -12,10 +12,11 @@ const BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400];
 
 function blankSession(protocol = 'ssh') {
   return {
-    protocol, host: '', port: protocol === 'telnet' ? 23 : 22, user: '',
+    protocol, host: '', port: { telnet: 23, ipmi: 623 }[protocol] || 22, user: '',
     auth: 'password', keyPath: '', certPath: '', jump: [], algorithms: 'secure', keepAlive: 30, agentForward: false, connectTimeout: 15,
     serial: { device: '', baud: 9600, dataBits: 8, parity: 'none', stopBits: '1' },
     local: { kind: 'shell', shell: '', dir: '', target: '', namespace: '', container: '', context: '', command: '' },
+    ipmi: { cipherSuite: 0 },
     expect: [], expectTimeout: 20, before: [], after: [], clusters: [], macros: [],
     logToFile: false, logDir: '', logTimestamps: false, fontSize: 0, scrollback: 0, pasteDelay: 0, noHighlight: false,
     credentialId: '', jumpVia: '', termText: '', termBackground: '', antiIdle: 0, antiIdleText: '',
@@ -256,7 +257,7 @@ const LIST_MODES = [['add', 'Add to each'], ['replace', 'Replace in each'], ['re
 
 // Settings by section, with the names shown when they differ.
 const MULTI_SECTIONS = {
-  Connection: { protocol: 'Protocol', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
+  Connection: { protocol: 'Protocol', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', ipmi: 'IPMI cipher suite', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
   Authentication: { credentialId: 'Login', user: 'User name', auth: 'Method', keyPath: 'Key file', certPath: 'Certificate', algorithms: 'Algorithms', agentForward: 'Agent forwarding' },
   'Jump hosts': { jumpVia: 'Jump host', jump: 'Jump hosts', onward: 'As a jump host' },
   'Tunnels and proxy': { tunnels: 'Tunnels', proxy: 'Outbound proxy' },
@@ -466,9 +467,9 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     const proto = multi && !net.length ? h('div', { class: 'hint', text: [...protocols].map(p => protoLabel[p] || p).join(', ') }) : seg([
       { value: 'ssh', label: 'SSH', icon: portGlyph('ssh') },
       { value: 'telnet', label: 'Telnet', icon: portGlyph('telnet') },
-      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }, { value: 'local', label: 'Local', icon: portGlyph('local') }]),
+      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }, { value: 'ipmi', label: 'IPMI SOL', icon: portGlyph('ipmi') }, { value: 'local', label: 'Local', icon: portGlyph('local') }]),
     ], s.protocol, v => {
-      const defPort = { ssh: 22, telnet: 23 };
+      const defPort = { ssh: 22, telnet: 23, ipmi: 623 };
       // With many sessions each one's default port follows (see PatchSessions).
       if (!multi && (!s.port || s.port === defPort[s.protocol])) s.port = defPort[v] || 0;
       s.protocol = v; refreshNav(); show(0);
@@ -520,10 +521,26 @@ export async function editSession(node, parentId = '', startSection = '', multi 
       const host = h('input', { type: 'text', value: s.host, spellcheck: false, placeholder: multi ? 'Each session keeps its own' : '10.0.0.1 or router.example.net', disabled: !!multi, on: { input: e => (s.host = e.target.value.trim()) } });
       const port = h('input', { type: 'number', min: 1, max: 65535, value: s.port, on: { input: e => (s.port = +e.target.value) } });
       out.push(h('div', { class: 'grid-host' }, h('label', { class: 'field mono' }, h('span', { text: 'Host' }), host), h('label', { class: 'field mono' }, h('span', { text: 'Port' }), port)));
+      if (s.protocol === 'ipmi') out.push(...ipmiFields());
       if (s.protocol === 'telnet') out.push(h('p', { class: 'warning', text: 'Telnet is not encrypted: the password and everything you type cross the network in clear text. Use it only on isolated lab or out-of-band networks.' }));
     }
     out.push(...keepOpenFields());
     return out;
+  }
+
+  // ipmiFields: the RMCP+ cipher suite of an IPMI Serial-over-LAN session.
+  function ipmiFields() {
+    if (!s.ipmi) s.ipmi = { cipherSuite: 0 };
+    const cs = h('select', { on: { change: e => (s.ipmi.cipherSuite = +e.target.value) } },
+      h('option', { value: 0, text: 'Automatic (17, then 3)' }),
+      h('option', { value: 17, text: '17: HMAC-SHA256, AES-128' }),
+      h('option', { value: 3, text: '3: HMAC-SHA1, AES-128' }),
+      h('option', { value: 8, text: '8: HMAC-MD5, AES-128' }),
+      h('option', { value: 1, text: '1: HMAC-SHA1, not encrypted' }),
+      h('option', { value: 2, text: '2: HMAC-SHA1, integrity only' }));
+    cs.value = String(s.ipmi.cipherSuite || 0);
+    return [field('Cipher suite', cs, 'Most BMCs (iDRAC, iLO, Supermicro) offer 17 and 3. Pick one only when the BMC allows no other.'),
+      h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: 'The host is the BMC (iDRAC, iLO, IPMI address), not the server. YACM opens the server’s serial console through IPMI 2.0 Serial-over-LAN on UDP 623. Type ~. at the start of a line to end it.' })];
   }
 
   // localFields: what a local session runs.
@@ -601,7 +618,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
         s.protocol === 'ssh' ? h('span', { class: 'hint', text: 'Empty: YACM asks for it when connecting.' }) : null));
     }
     if (s.protocol !== 'ssh') {
-      out.push(h('p', { class: 'lead', text: s.protocol === 'telnet' ? 'Telnet has no login protocol of its own. The user name and password are sent by automation rules using <USER> and <PASS>.' : 'Serial consoles log in through the device prompt. Automation rules can send the user name and password using <USER> and <PASS>.' }));
+      out.push(h('p', { class: 'lead', text: s.protocol === 'ipmi' ? 'The user name and password of the BMC (iDRAC, iLO, IPMI user). The user needs IPMI over LAN and Serial-over-LAN rights; the server’s own console login comes after, in the terminal.' : s.protocol === 'telnet' ? 'Telnet has no login protocol of its own. The user name and password are sent by automation rules using <USER> and <PASS>.' : 'Serial consoles log in through the device prompt. Automation rules can send the user name and password using <USER> and <PASS>.' }));
       if (vaultOK && !prof) out.push(secretField('Password', flags.password, v => (sec.password = v), reveal('password')));
       return out;
     }
@@ -949,6 +966,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
         const out = structuredClone(n);
         const o = out.session;
         if (o.protocol !== 'serial') delete o.serial; else { o.host = ''; o.port = 0; }
+        if (o.protocol !== 'ipmi') delete o.ipmi; else { o.jump = []; o.jumpVia = ''; o.tunnels = []; }
         if (o.protocol !== 'local') delete o.local; else { o.host = ''; o.port = 0; o.jump = []; o.jumpVia = ''; o.credentialId = ''; }
         if (o.protocol !== 'ssh') o.auth = '';
         if (o.protocol === 'serial') { o.jump = []; o.jumpVia = ''; }

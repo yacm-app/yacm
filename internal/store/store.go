@@ -412,7 +412,7 @@ func Validate(n *Node) error {
 	}
 	ss := n.Session
 	switch ss.Protocol {
-	case ProtoSSH, ProtoTelnet:
+	case ProtoSSH, ProtoTelnet, ProtoIPMI:
 		if strings.TrimSpace(ss.Host) == "" {
 			return errors.New("host is required")
 		}
@@ -490,6 +490,15 @@ func Validate(n *Node) error {
 			if err := ValidOnwardCommand(c); err != nil {
 				return err
 			}
+		}
+	}
+	if ss.Protocol != ProtoIPMI {
+		ss.IPMI = nil
+	} else {
+		// SOL runs over UDP straight to the BMC: no tunnels, no proxy.
+		ss.Tunnels, ss.Proxy = nil, nil
+		if ss.IPMI != nil && (ss.IPMI.CipherSuite < 0 || ss.IPMI.CipherSuite > 19) {
+			return fmt.Errorf("unknown IPMI cipher suite %d", ss.IPMI.CipherSuite)
 		}
 	}
 	if ss.Protocol != ProtoLocal {
