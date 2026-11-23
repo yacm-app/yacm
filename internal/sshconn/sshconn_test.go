@@ -543,9 +543,14 @@ func TestHashedKnownHosts(t *testing.T) {
 
 func TestHostCertWithoutCAFallsBackToKey(t *testing.T) {
 	hostCA, hostKey := newSigner(t), newSigner(t)
-	hcert := &ssh.Certificate{Key: hostKey.PublicKey(), CertType: ssh.HostCert, ValidBefore: ssh.CertTimeInfinity}
-	hcert.SignCert(rand.Reader, hostCA)
-	cs, _ := ssh.NewCertSigner(hcert, hostKey)
+	hcert := &ssh.Certificate{Key: hostKey.PublicKey(), CertType: ssh.HostCert, ValidPrincipals: []string{"127.0.0.1"}, ValidBefore: ssh.CertTimeInfinity}
+	if err := hcert.SignCert(rand.Reader, hostCA); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := ssh.NewCertSigner(hcert, hostKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := passwordServer(t, hostKey, "x")
 	cfg.AddHostKey(cs)
 	srv := startServer(t, cfg, false)
