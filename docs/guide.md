@@ -102,6 +102,16 @@ Hovering shows each label.
   agent) shared by many sessions. When your directory password changes,
   change it once in the profile and every session follows. Profiles also fill
   `<USER>` and `<PASS>` in telnet and serial automation.
+- **Passwords from KeePass or Bitwarden**: a credential profile can take
+  its password from a KeePass database (`.kdbx`, with a key file if it has
+  one) or from Bitwarden (through its `bw` command line program, signed in
+  once with `bw login`) instead of the YACM vault: *Password kept in* >
+  *KeePass* or *Bitwarden*, with the entry (KeePass: `Group/Title`, a title or
+  its UUID; Bitwarden: the item's name or ID) and *Check*. The database is
+  chosen in Settings > Integrations. YACM only reads it, asks for its master
+  password when a session first needs it, and locks it with the vault; the
+  password is read each time it is needed, so a change in KeePass or
+  Bitwarden counts at once.
 - **The vault** keeps every password, passphrase and token encrypted (see
   [Security model](#security-model)). It locks after 15 idle minutes by
   default (Settings > Security) and when YACM closes; the padlock on the left

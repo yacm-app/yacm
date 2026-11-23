@@ -29,6 +29,7 @@
   let uploads = 0;
   const servers = {};
   const localSorts = cfg.localSorts || {};
+  const pm = { keepass: false, bitwarden: false };
   let lowPortAllowed = 1024;
   const clusters = () => {
     const c = {};
@@ -82,6 +83,11 @@
       ids.forEach(id => copy(id, parentId, true));
       return tops;
     },
+    PasswordManagerStatus: () => ({ keepassFile: settings.keepassFile || '', keepassUnlocked: pm.keepass, bitwardenUnlocked: pm.bitwarden }),
+    UnlockKeePass: pw => { if (pw !== 'kp-master') throw new Error('the KeePass database could not be opened (wrong master password or key file?)'); pm.keepass = true; return null; },
+    UnlockBitwarden: () => { pm.bitwarden = true; return null; },
+    LockPasswordManagers: () => { pm.keepass = pm.bitwarden = false; return null; },
+    CheckSecretSource: src => { if (src.ref !== 'Network/tacacs') throw new Error(`no KeePass entry "${src.ref}"`); return null; },
     LocalFolderSorts: () => localSorts,
     SetFolderSort: (id, sort) => {
       const n = nodes.find(x => x.id === id);

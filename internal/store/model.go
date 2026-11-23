@@ -141,7 +141,21 @@ type Credential struct {
 	Auth        AuthMethod `json:"auth"` // for SSH; telnet and serial use the password through <PASS>
 	KeyPath     string     `json:"keyPath,omitempty"`
 	CertPath    string     `json:"certPath,omitempty"`
-	Updated     time.Time  `json:"updated"`
+	// Source: the password comes from a password manager instead of the
+	// YACM vault (nil = the vault).
+	Source  *SecretSource `json:"source,omitempty"`
+	Updated time.Time     `json:"updated"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// SecretSource names a password in a password manager.
+type SecretSource struct {
+	Kind string `json:"kind"` // "keepass" or "bitwarden"
+	// Ref: KeePass entry (Group/Title, a title, or its UUID); Bitwarden
+	// item (its name or ID).
+	Ref string `json:"ref"`
 
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`
@@ -469,14 +483,19 @@ type Settings struct {
 	// without it closes the open sessions).
 	LockSessions string `json:"lockSessions,omitempty"`
 
-	SidebarWidth   int              `json:"sidebarWidth,omitempty"`
-	SidebarHidden  bool             `json:"sidebarHidden,omitempty"` // session list folded away (the Sessions icon)
-	PasteDelay     int              `json:"pasteDelay"`              // ms between lines of a multi-line paste
-	Highlight      bool             `json:"highlight"`
-	HighlightRules []HighlightRule  `json:"highlightRules"`
-	Snippets       []Snippet        `json:"snippets"`
-	NetBoxURL      string           `json:"netboxUrl,omitempty"`
-	TeamLibraries  []TeamLibraryRef `json:"teamLibraries,omitempty"`
+	SidebarWidth   int             `json:"sidebarWidth,omitempty"`
+	SidebarHidden  bool            `json:"sidebarHidden,omitempty"` // session list folded away (the Sessions icon)
+	PasteDelay     int             `json:"pasteDelay"`              // ms between lines of a multi-line paste
+	Highlight      bool            `json:"highlight"`
+	HighlightRules []HighlightRule `json:"highlightRules"`
+	Snippets       []Snippet       `json:"snippets"`
+	NetBoxURL      string          `json:"netboxUrl,omitempty"`
+	// Password managers for credential profiles: the KeePass database and
+	// its key file, and the Bitwarden program (bw; "" = on the PATH).
+	KeePassFile      string           `json:"keepassFile,omitempty"`
+	KeePassKeyFile   string           `json:"keepassKeyFile,omitempty"`
+	BitwardenProgram string           `json:"bitwardenProgram,omitempty"`
+	TeamLibraries    []TeamLibraryRef `json:"teamLibraries,omitempty"`
 
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`

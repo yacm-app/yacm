@@ -56,6 +56,19 @@ func (s *Store) UpsertCredential(c *Credential) (*Credential, error) {
 	if c.Auth != AuthPublicKey {
 		c.KeyPath, c.CertPath = "", ""
 	}
+	if src := c.Source; src != nil {
+		switch src.Kind {
+		case "":
+			c.Source = nil
+		case "keepass", "bitwarden":
+			src.Ref = strings.TrimSpace(src.Ref)
+			if src.Ref == "" || strings.ContainsAny(src.Ref, "\r\n") || src.Kind == "bitwarden" && strings.HasPrefix(src.Ref, "-") {
+				return nil, errors.New("give the password manager entry: its name, path or ID")
+			}
+		default:
+			return nil, fmt.Errorf("unknown password manager %q", src.Kind)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.readOnly {
@@ -73,6 +86,9 @@ func (s *Store) UpsertCredential(c *Credential) (*Credential, error) {
 	cc.Updated = time.Now().UTC()
 	if old, ok := s.creds[cc.ID]; ok {
 		cc.Extra = jsonx.Keep(cc.Extra, old.Extra)
+		if cc.Source != nil && old.Source != nil {
+			cc.Source.Extra = jsonx.Keep(cc.Source.Extra, old.Source.Extra)
+		}
 	}
 	s.creds[cc.ID] = &cc
 	if err := s.saveLocked(); err != nil {

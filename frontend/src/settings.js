@@ -308,8 +308,29 @@ export async function openSettings(onApply, startTab) {
       h('button', { type: 'button', class: 'btn small', text: 'Forget token', on: { click: async () => { try { await api.ForgetNetBoxToken(); netbox.hasToken = false; renderToken(); toast('NetBox token removed.'); } catch (e) { toast(errMsg(e), 'error'); } } } }))
     : h('span', { class: 'hint', text: 'No API token stored. It is asked for (and can be saved) when you import from NetBox.' }));
   renderToken();
+  // Password managers for credential profiles.
+  const pmStatus = h('div', { class: 'hint' });
+  const paintPM = async () => {
+    const pm = await api.PasswordManagerStatus().catch(() => null);
+    if (!pm) return;
+    pmStatus.replaceChildren(
+      h('span', { text: `KeePass: ${pm.keepassUnlocked ? 'unlocked' : 'locked'} · Bitwarden: ${pm.bitwardenUnlocked ? 'unlocked' : 'locked'}. ` }),
+      (pm.keepassUnlocked || pm.bitwardenUnlocked) ? h('button', { type: 'button', class: 'btn small', text: 'Lock them', on: { click: async () => { await api.LockPasswordManagers(); paintPM(); } } }) : null);
+  };
+  const fileRow = (label, key, kind, placeholder) => {
+    const inp = h('input', { type: 'text', value: st[key] || '', spellcheck: false, class: 'mono-input', placeholder, on: { input: e => (st[key] = e.target.value.trim()) } });
+    return h('label', { class: 'field mono' }, h('span', { text: label }), h('div', { class: 'with-btn' }, inp,
+      h('button', { type: 'button', class: 'btn small', text: 'Browse', on: { click: async () => { const f = await api.ChooseFile(label, kind); if (f) { inp.value = f; st[key] = f; } } } })));
+  };
   const integrations = () => [
-    h('h3', { text: 'NetBox' }),
+    h('h3', { text: 'Password managers' }),
+    h('p', { class: 'lead', text: 'Credential profiles can take their password from KeePass or Bitwarden instead of the YACM vault (Credential profiles > Password kept in). YACM only reads them, asks for the master password when a session first needs it, and locks them with the vault.' }),
+    fileRow('KeePass database (.kdbx)', 'keepassFile', 'kdbx', 'C:\\Users\\you\\Documents\\network.kdbx'),
+    fileRow('KeePass key file (if the database uses one)', 'keepassKeyFile', '', 'Optional'),
+    fileRow('Bitwarden command line program (empty: bw on the PATH)', 'bitwardenProgram', '', 'bw'),
+    pmStatus,
+    (paintPM(), null),
+    h('h3', { text: 'NetBox', style: { marginTop: '18px' } }),
     hint('Used by Import > From NetBox to create sessions from the devices and virtual machines in NetBox.'),
     field('NetBox address', nbURL), nbToken,
   ];

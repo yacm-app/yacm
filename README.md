@@ -110,6 +110,8 @@ hardware, get the separate demo download for your system
   revision check, and a warning when a session's target changes.
 - **Credential profiles and group defaults**: logins, jump hosts, algorithm
   profiles and colours inherited through groups and subgroups.
+- **Passwords from KeePass or Bitwarden** for credential profiles, read
+  when needed and never written.
 - **Local terminals and containers**: PowerShell, cmd, WSL, bash or zsh on
   this computer, `docker exec` and `kubectl exec`, in tabs like any session.
 - **Edit many sessions at once** in the same editor as one: every setting,

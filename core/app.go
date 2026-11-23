@@ -83,6 +83,8 @@ type App struct {
 	promptMu sync.Mutex
 	prompts  map[string]chan PromptAnswer
 
+	pm pwManagers // KeePass and Bitwarden for credential profiles (sources.go)
+
 	filesMu    sync.Mutex
 	files      map[string]*filesConn   // open device file systems (Files tabs, Send/Get file)
 	scpOnly    map[string]bool         // sessions whose device refused SFTP (no second attempt)
@@ -239,6 +241,7 @@ func (a *App) shutdown(ctx context.Context) {
 		a.closeConn(t, false)
 	}
 	a.vault.Lock()
+	a.pm.lock()
 	a.lock.release()
 }
 

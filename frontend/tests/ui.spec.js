@@ -1807,3 +1807,28 @@ test('a jump host that does not forward types a command, and its sessions say so
   await expect(dlg).not.toContainText('When other sessions use this one');
   expect(errors).toEqual([]);
 });
+
+test('a credential profile can take its password from KeePass, checked after unlocking it', async ({ page }) => {
+  const errors = await open(page, { settings: { keepassFile: '/home/jsmith/network.kdbx' } });
+  await page.locator('#activity').getByRole('button', { name: 'Credential profiles', exact: true }).click();
+  await page.getByRole('button', { name: 'New profile' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New credential profile' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('TACACS');
+  await dlg.getByRole('radio', { name: 'KeePass' }).click();
+  await expect(dlg).toContainText('/home/jsmith/network.kdbx');
+  const ref = dlg.locator('label.field', { hasText: 'KeePass entry' }).locator('input');
+  await ref.fill('Network/tacacs');
+  await dlg.getByRole('button', { name: 'Check' }).click();
+  const unlock = page.getByRole('dialog', { name: 'Unlock KeePass' });
+  await unlock.locator('input').fill('wrong');
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await expect(unlock).toContainText('wrong master password');
+  await unlock.locator('input').fill('kp-master');
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await expect(dlg).toContainText('Found. The password is read from there each time it is needed.');
+  await dlg.getByRole('button', { name: 'Create profile' }).click();
+  const [out, secrets] = (await calls(page, 'SaveCredential')).at(-1).args;
+  expect(out.source).toEqual({ kind: 'keepass', ref: 'Network/tacacs' });
+  expect(secrets.password).toBe(null);
+  expect(errors).toEqual([]);
+});

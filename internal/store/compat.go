@@ -63,6 +63,15 @@ func (v OnwardOptions) MarshalJSON() ([]byte, error) {
 	return jsonx.Marshal(plain(v), v.Extra)
 }
 
+func (v *SecretSource) UnmarshalJSON(b []byte) error {
+	type plain SecretSource
+	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
+}
+func (v SecretSource) MarshalJSON() ([]byte, error) {
+	type plain SecretSource
+	return jsonx.Marshal(plain(v), v.Extra)
+}
+
 func (v *Credential) UnmarshalJSON(b []byte) error {
 	type plain Credential
 	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)

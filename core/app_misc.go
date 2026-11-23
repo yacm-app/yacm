@@ -46,6 +46,11 @@ func (a *App) ChooseFile(title string, kind string) (string, error) {
 			{DisplayName: "Sessions (YACM, Ásbrú, other programs, CSV, Excel)", Pattern: "*.yacm;*.json;*.yml;*.yaml;*.xml;*.ini;*.mxtsessions;*.rtsz;*.reg;*.csv;*.tsv;*.xlsx;*.xsh;config"},
 			{DisplayName: "All files", Pattern: "*"},
 		}
+	case "kdbx":
+		opts.Filters = []wruntime.FileFilter{
+			{DisplayName: "KeePass database (*.kdbx)", Pattern: "*.kdbx"},
+			{DisplayName: "All files", Pattern: "*"},
+		}
 	case "table":
 		opts.Filters = []wruntime.FileFilter{
 			{DisplayName: "Device list (*.csv, *.xlsx)", Pattern: "*.csv;*.tsv;*.txt;*.xlsx;*.xlsm"},

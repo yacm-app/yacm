@@ -209,6 +209,9 @@ func (a *App) ConnectCluster(name string, cols, rows int) ([]string, error) {
 }
 
 func (a *App) secret(name string) string {
+	if v, ok := a.managedSecret(name); ok {
+		return v
+	}
 	v, _ := a.vault.Get(name)
 	return v
 }
@@ -276,6 +279,7 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	if !a.vault.Unlocked() && a.vault.Exists() {
 		a.tabLog(t, "vault is locked: stored passwords are not available, you will be asked")
 	}
+	a.unlockForSession(ctx, t, eff)
 
 	var c conn
 	summary := ""

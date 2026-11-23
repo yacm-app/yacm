@@ -8,6 +8,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/pkg/sftp v1.13.12
 	github.com/tc-hib/winres v0.3.1
+	github.com/tobischo/gokeepasslib/v3 v3.7.1
 	github.com/wailsapp/wails/v2 v2.17.1
 	go.bug.st/serial v1.8.0
 	golang.org/x/crypto v0.58.0
@@ -38,6 +39,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
+	github.com/tobischo/argon2 v0.2.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
