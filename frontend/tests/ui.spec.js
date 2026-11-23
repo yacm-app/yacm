@@ -323,6 +323,23 @@ test('the session editor previews the font size, and a cleared size goes back to
   expect(errors).toEqual([]);
 });
 
+test('the user name is edited under Authentication, next to the login', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree .row.session', { hasText: 'core-sw1' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  const pane = page.locator('.editor .pane');
+  await expect(pane.locator('.field', { hasText: 'Host' }).first()).toBeVisible();
+  await expect(pane.locator('label.field', { hasText: 'Username' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Authentication' }).click();
+  const user = pane.locator('label.field', { hasText: 'Username' }).locator('input');
+  await expect(user).toHaveValue('admin');
+  await user.fill('jsmith');
+  await page.getByRole('button', { name: 'Save session' }).click();
+  const saved = await calls(page, 'SaveNode');
+  expect(saved.at(-1).args[0].session.user).toBe('jsmith');
+  expect(errors).toEqual([]);
+});
+
 test('the tab menu offers Clone session instead of font sizes', async ({ page }) => {
   const errors = await open(page);
   const [first] = await connectTabs(page, ['core-sw1', 'core-sw2']);

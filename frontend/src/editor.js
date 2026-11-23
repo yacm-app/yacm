@@ -263,7 +263,7 @@ export async function editSession(node, parentId = '', startSection = '') {
   n.session.serial = { ...blankSession().serial, ...(n.session.serial || {}) };
   const s = n.session;
   for (const k of ['jump', 'expect', 'before', 'after', 'clusters', 'macros', 'tunnels']) s[k] = s[k] || [];
-  const flags = node ? await api.GetSecretFlags(node.id).catch(() => ({ jump: {}, expect: {} })) : { jump: {}, expect: {} };
+  const flags = { jump: {}, expect: {}, ...(node ? await api.GetSecretFlags(node.id).catch(() => null) : null) };
   const sec = { password: undefined, passphrase: undefined, jump: {}, expect: {}, jumpOrigin: s.jump.map((_, i) => i) };
   const vaultOK = state.vault.unlocked;
   const reveal = (kind, ref = '') => master => api.RevealSecret(n.id, kind, ref, master);
@@ -356,12 +356,7 @@ export async function editSession(node, parentId = '', startSection = '') {
     } else {
       const host = h('input', { type: 'text', value: s.host, spellcheck: false, placeholder: '10.0.0.1 or router.example.net', on: { input: e => (s.host = e.target.value.trim()) } });
       const port = h('input', { type: 'number', min: 1, max: 65535, value: s.port, on: { input: e => (s.port = +e.target.value) } });
-      const user = h('input', { type: 'text', value: s.user, spellcheck: false, on: { input: e => (s.user = e.target.value) } });
-      const prof = profileInUse();
-      if (prof) { user.disabled = true; user.value = prof.cred.user || s.user; }
-      out.push(h('div', { class: 'grid-host' }, h('label', { class: 'field mono' }, h('span', { text: 'Host' }), host), h('label', { class: 'field mono' }, h('span', { text: 'Port' }), port)),
-        h('label', { class: 'field mono' }, h('span', { text: 'Username' }), user,
-          prof ? h('span', { class: 'inherit-note' }, 'From credential profile ', h('b', { text: prof.cred.name }), prof.from ? ` (set by group ${prof.from.name})` : '', '. Change it under Authentication.') : null));
+      out.push(h('div', { class: 'grid-host' }, h('label', { class: 'field mono' }, h('span', { text: 'Host' }), host), h('label', { class: 'field mono' }, h('span', { text: 'Port' }), port)));
       if (s.protocol === 'telnet') out.push(h('p', { class: 'warning', text: 'Telnet is not encrypted: the password and everything you type cross the network in clear text. Use it only on isolated lab or out-of-band networks.' }));
     }
     out.push(...keepOpenFields());
@@ -387,6 +382,11 @@ export async function editSession(node, parentId = '', startSection = '') {
     if (!vaultOK) out.push(h('p', { class: 'warning', text: 'The vault is locked, so passwords cannot be stored. Unlock it to save credentials; until then you will be asked when connecting.' }));
     out.push(loginPicker());
     const prof = profileInUse();
+    if (!prof) {
+      const user = h('input', { type: 'text', value: s.user, spellcheck: false, on: { input: e => (s.user = e.target.value) } });
+      out.push(h('label', { class: 'field mono' }, h('span', { text: 'Username' }), user,
+        s.protocol === 'ssh' ? h('span', { class: 'hint', text: 'Empty: YACM asks for it when connecting.' }) : null));
+    }
     if (s.protocol !== 'ssh') {
       out.push(h('p', { class: 'lead', text: s.protocol === 'telnet' ? 'Telnet has no login protocol of its own. The user name and password are sent by automation rules using <USER> and <PASS>.' : 'Serial consoles log in through the device prompt. Automation rules can send the user name and password using <USER> and <PASS>.' }));
       if (vaultOK && !prof) out.push(secretField('Password', flags.password, v => (sec.password = v), reveal('password')));
