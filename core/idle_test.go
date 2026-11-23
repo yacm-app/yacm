@@ -19,6 +19,7 @@ func TestPromptRecognition(t *testing.T) {
 		"R1>": "R1", "R1#": "R1", "core-sw1(config-if)#": "core-sw1", "N9K-1(config)# ": "N9K-1",
 		"admin@mx1>": "mx1", "RP/0/RSP0/CPU0:xr-pe1#": "xr-pe1", "root@srv01:~#": "srv01",
 		"[admin@MikroTik] >": "MikroTik", "sw.zg.lab#": "sw.zg.lab",
+		"RU_ZG_IS+C_JUG_NOVI_ZAGREB#": "RU_ZG_IS+C_JUG_NOVI_ZAGREB", "RU_ZG_IS+C_JUG(config)#": "RU_ZG_IS+C_JUG", "a&b>": "a&b",
 	}
 	for line, host := range cases {
 		var w promptWatch
