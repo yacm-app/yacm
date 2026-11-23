@@ -8,6 +8,19 @@
 //   { version: '1.1.0', items: [['Title', 'One or two sentences.'], …] },
 export const WHATS_NEW = [
   {
+    version: '1.2.0',
+    items: [
+      ['Edit many sessions in the editor', 'Select sessions or a group and edit them in the same editor as one session: every setting, with a mark on what you change. Lists such as automation rules, saved commands and tags can be added to each session, replaced or cleaned of matching entries. Names and addresses stay each session\'s own.'],
+      ['Folders that stay sorted', 'Right click a folder > Sort by: name (r2 before r10), address, connection type, opened last or size. New and renamed sessions take their place; subfolders can follow.'],
+      ['Local terminals and containers', 'A session of type Local opens PowerShell, cmd, WSL, bash or zsh on this computer, or a shell in a Docker container or Kubernetes pod, with logs, saved commands and automation like any session. Right click below the tree > Open a local terminal.'],
+      ['Jump hosts that do not forward', 'A router or a server without TCP forwarding can still be the jump host: YACM logs in to it, types ssh or telnet (or your own command, such as telnet <HOST> /vrf MGMT) and answers the device\'s login.'],
+      ['IPMI Serial-over-LAN', 'A server\'s serial console through its BMC (iDRAC, iLO, any IPMI 2.0 BMC), without the vendor\'s web page or Java.'],
+      ['Passwords from KeePass or Bitwarden', 'A credential profile can read its password from a KeePass database or a Bitwarden vault when you connect, instead of keeping a copy.'],
+      ['Session editor', 'The user name is under Authentication, next to the password and the credential profile.'],
+      ['Type to many', 'The command field has a row of its own and the sessions wrap above it, so it stays usable with many sessions; the label counts the checked ones (5 of 30).'],
+    ],
+  },
+  {
     version: '1.1.0',
     items: [
       ['Royal TS import', 'Sessions, folders, credentials and saved passwords from Royal TS and Royal TSX documents (.rtsz), also password-protected ones.'],
