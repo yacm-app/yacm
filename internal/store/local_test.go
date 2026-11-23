@@ -3,11 +3,18 @@
 
 package store
 
-import "testing"
+import (
+	"runtime"
+	"testing"
+)
 
 func TestLocalSessions(t *testing.T) {
+	path := "/usr/bin/fish"
+	if runtime.GOOS == "windows" {
+		path = `C:\Program Files\Git\bin\bash.exe`
+	}
 	ok := []*LocalOptions{
-		{Kind: "shell"}, {Kind: "shell", Shell: "pwsh"}, {Kind: "shell", Shell: "/usr/bin/fish"},
+		{Kind: "shell"}, {Kind: "shell", Shell: "pwsh"}, {Kind: "shell", Shell: path},
 		{Kind: "docker", Target: "netbox", Command: "bash"},
 		{Kind: "kubectl", Target: "web-1", Namespace: "prod", Container: "app", Context: "eu"},
 	}
