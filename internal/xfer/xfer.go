@@ -83,7 +83,7 @@ func Open(l *Link) (Remote, error) {
 
 // OpenWhy is Open that also says why SFTP was not used ("" with SFTP).
 func OpenWhy(l *Link) (Remote, string) {
-	r, err := openSFTP(l.Client())
+	r, err := openSFTP(context.Background(), l.Client())
 	if err == nil {
 		return r, ""
 	}
@@ -99,8 +99,8 @@ var sftpStart = 5 * time.Second
 // that channel when the device refuses: Cisco IOS takes one session channel
 // per connection, and a channel left open blocks everything after it.
 // (sftp.NewClient keeps the channel open when the subsystem is refused.)
-func openSFTP(c *ssh.Client) (Remote, error) {
-	s, err := c.NewSession()
+func openSFTP(ctx context.Context, c *ssh.Client) (Remote, error) {
+	s, err := OpenSession(ctx, c)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,8 @@ func TestLine(t *testing.T) {
 		{"snmp-server host 192.0.2.9 informs version 2c TrapComm udp-port 162", "snmp-server host 192.0.2.9 informs version 2c ***** udp-port 162"},
 		{"snmp-server host 192.0.2.9 vrf MGMT traps version 1 TrapComm", "snmp-server host 192.0.2.9 vrf MGMT traps version 1 *****"},
 		{"snmp-server host 192.0.2.9 TrapComm", "snmp-server host 192.0.2.9 *****"},
+		{"snmp-server host inside 192.0.2.9 community TrapComm version 2c", "snmp-server host inside 192.0.2.9 community ***** version 2c"},
+		{"snmp-server host mgmt 192.0.2.9 poll community 0 TrapComm", "snmp-server host mgmt 192.0.2.9 poll community 0 *****"},
 		{" key MyTacacsKey", " key *****"},
 		{` key "My Key"`, ` key "*****"`},
 		{" key 1", " key 1"},

@@ -12,6 +12,7 @@ export interface Backend {
   ChangeDataFolder(a1: string, a2: string): Promise<void>;
   ChangeMasterPassword(a1: string, a2: string): Promise<void>;
   CheckForUpdate(): Promise<any>;
+  CheckSecretSource(a1: any): Promise<void>;
   ChooseDirectory(a1: string): Promise<string>;
   ChooseFile(a1: string, a2: string): Promise<string>;
   ChooseFiles(a1: string, a2: string): Promise<string[]>;
@@ -79,12 +80,14 @@ export interface Backend {
   ListSerialPorts(): Promise<any[]>;
   LocalAddresses(): Promise<any[]>;
   LocalExists(a1: string): Promise<boolean>;
+  LocalFolderSorts(): Promise<Record<string, any>>;
   LocalHome(): Promise<string>;
   LocalJoin(a1: string, a2: string): Promise<string>;
   LocalList(a1: string): Promise<any[]>;
   LocalMkdir(a1: string): Promise<void>;
   LocalParent(a1: string): Promise<string>;
   LocalRoots(): Promise<any[]>;
+  LockPasswordManagers(): Promise<void>;
   LockVault(): Promise<void>;
   LogNamePreview(a1: string): Promise<string>;
   LogUIError(a1: string): Promise<void>;
@@ -96,6 +99,8 @@ export interface Backend {
   OpenBackupFolder(): Promise<void>;
   OpenDataFolder(): Promise<void>;
   OpenLogFolder(): Promise<void>;
+  PasswordManagerStatus(): Promise<any>;
+  PatchSessions(a1: any): Promise<any | null>;
   PreviewForeign(a1: string, a2: string, a3: string): Promise<any | null>;
   PreviewTable(a1: string): Promise<any | null>;
   PublishTeamLibrary(a1: any): Promise<any | null>;
@@ -123,8 +128,10 @@ export interface Backend {
   SessionAddresses(a1: string[]): Promise<string[]>;
   SessionCommandToFile(a1: string, a2: string, a3: string): Promise<string>;
   SessionsUnder(a1: string[]): Promise<string[]>;
+  SetChildOrder(a1: string, a2: string[]): Promise<void>;
   SetExpanded(a1: string, a2: boolean): Promise<void>;
   SetFavorite(a1: string, a2: boolean): Promise<string[]>;
+  SetFolderSort(a1: string, a2: any | null): Promise<void>;
   StopEditingTeamLibrary(a1: string, a2: boolean): Promise<void>;
   StopExpect(a1: string): Promise<void>;
   StopWaiting(a1: string): Promise<void>;
@@ -135,6 +142,8 @@ export interface Backend {
   TunnelStart(a1: string, a2: any): Promise<any>;
   TunnelStatuses(a1: string): Promise<any[]>;
   TunnelStop(a1: string, a2: string): Promise<void>;
+  UnlockBitwarden(a1: string): Promise<void>;
+  UnlockKeePass(a1: string): Promise<void>;
   UnlockVault(a1: string): Promise<void>;
   WaitForDevice(a1: string): Promise<void>;
   Write(a1: string, a2: string): Promise<void>;

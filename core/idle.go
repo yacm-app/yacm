@@ -56,8 +56,10 @@ func (p *promptWatch) output(b []byte, now time.Time) {
 // promptRe matches a CLI prompt that waits for a command and captures the
 // hostname: R1>, R1#, R1(config-if)#, admin@R1>, RP/0/RSP0/CPU0:xr1#,
 // root@srv:~#, [admin@MikroTik] >. Dialogs such as [confirm], Password:,
-// "Destination filename [x]?" and --More-- do not end in > or #.
-var promptRe = regexp.MustCompile(`^\[?(?:[\w./-]+[:@])?([A-Za-z0-9][\w.-]{0,62})\]?(?:\([\w./:-]*\))?(?::\S*)?\s?[>#]\s?$`)
+// "Destination filename [x]?" and --More-- do not end in > or #. A
+// hostname may hold more than letters and digits (RU_ZG_IS+C_JUG#): any
+// character but a space and those that mark the parts of a prompt.
+var promptRe = regexp.MustCompile(`^\[?(?:[\w./-]+[:@])?([A-Za-z0-9][^\s#>()\[\]:@/]{0,62})\]?(?:\([\w./:-]*\))?(?::\S*)?\s?[>#]\s?$`)
 
 // prompt returns the hostname shown by the prompt on the last line, or ok
 // false when the last line is not a prompt.
@@ -90,7 +92,11 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 	if window == 0 {
 		window = hostnameWindow
 	}
-	hostChecked := false
+	// A local shell or container is not a device to name, and the first
+	// prompt after going on from a jump host by a command is the jump host's.
+	t.mu.Lock()
+	hostChecked := (t.node.Session != nil && t.node.Session.Protocol == store.ProtoLocal) || t.onward != nil
+	t.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():

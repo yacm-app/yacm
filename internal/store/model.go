@@ -20,6 +20,12 @@ const (
 	ProtoSSH    Protocol = "ssh"
 	ProtoTelnet Protocol = "telnet"
 	ProtoSerial Protocol = "serial"
+	// ProtoLocal runs a program on this computer: a shell, or a shell in a
+	// container (docker exec, kubectl exec). Settings in Session.Local.
+	ProtoLocal Protocol = "local"
+	// ProtoIPMI is a server console through IPMI Serial-over-LAN (iDRAC,
+	// iLO, any IPMI 2.0 BMC). Settings in Session.IPMI.
+	ProtoIPMI Protocol = "ipmi"
 )
 
 // AuthMethod is how an SSH session authenticates.
@@ -59,7 +65,10 @@ type Node struct {
 	Color    string         `json:"color,omitempty"`
 	Session  *Session       `json:"session,omitempty"`
 	Defaults *GroupDefaults `json:"defaults,omitempty"` // groups only
-	Updated  time.Time      `json:"updated"`
+	// SortBy keeps a group's contents sorted (groups only); nil = the order
+	// you arranged. Older versions keep it and show the stored order.
+	SortBy  *FolderSort `json:"sortBy,omitempty"`
+	Updated time.Time   `json:"updated"`
 	// Library is set (at run time only) on nodes that come from a team
 	// library; such nodes are read-only and never saved with your sessions.
 	Library string `json:"library,omitempty"`
@@ -67,6 +76,22 @@ type Node struct {
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`
 }
+
+// FolderSort is how a group (folder) keeps its contents sorted.
+type FolderSort struct {
+	// Key: "name", "name-desc", "address", "type", "recent" (opened last
+	// first), "count" (subfolders with the most sessions first) or "manual"
+	// (your own order, also when a parent sorts its subfolders).
+	Key string `json:"key"`
+	// Subfolders: subfolders without their own sort follow this one.
+	Subfolders bool `json:"subfolders,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// SortKeys are the known FolderSort keys.
+var SortKeys = map[string]bool{"name": true, "name-desc": true, "address": true, "type": true, "recent": true, "count": true, "manual": true}
 
 // Inherit is the value of a session field that takes the setting from the
 // nearest group that defines it.
@@ -119,7 +144,21 @@ type Credential struct {
 	Auth        AuthMethod `json:"auth"` // for SSH; telnet and serial use the password through <PASS>
 	KeyPath     string     `json:"keyPath,omitempty"`
 	CertPath    string     `json:"certPath,omitempty"`
-	Updated     time.Time  `json:"updated"`
+	// Source: the password comes from a password manager instead of the
+	// YACM vault (nil = the vault).
+	Source  *SecretSource `json:"source,omitempty"`
+	Updated time.Time     `json:"updated"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// SecretSource names a password in a password manager.
+type SecretSource struct {
+	Kind string `json:"kind"` // "keepass" or "bitwarden"
+	// Ref: KeePass entry (Group/Title, a title, or its UUID); Bitwarden
+	// item (its name or ID).
+	Ref string `json:"ref"`
 
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`
@@ -245,6 +284,56 @@ type Serial struct {
 	Extra jsonx.Unknown `json:"-"`
 }
 
+// LocalOptions are the settings of a local session (Protocol "local").
+type LocalOptions struct {
+	// Kind: "shell" (a shell on this computer), "docker" or "kubectl".
+	Kind string `json:"kind"`
+	// Shell: "" (the system's own), a name (powershell, pwsh, cmd, wsl,
+	// bash, zsh, fish, sh) or the full path to a program.
+	Shell string `json:"shell,omitempty"`
+	Dir   string `json:"dir,omitempty"` // starting folder of a shell; "" = home
+	// Target is the container (docker) or the pod (kubectl).
+	Target    string `json:"target,omitempty"`
+	Namespace string `json:"namespace,omitempty"` // kubectl
+	Container string `json:"container,omitempty"` // kubectl: container in the pod
+	Context   string `json:"context,omitempty"`   // docker or kubectl context
+	// Command runs in the container; "" = sh.
+	Command string `json:"command,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// OnwardOptions say how sessions go on from an SSH session that is their
+// jump host. Mode "" forwards a TCP channel (like ssh -J). Mode "command"
+// is for jump hosts that cannot forward (a router, AllowTcpForwarding no):
+// YACM logs in to the jump host and types the command (ssh or telnet to
+// the device), then answers the device's password prompt.
+type OnwardOptions struct {
+	Mode   string `json:"mode"`
+	SSH    string `json:"ssh,omitempty"`    // command for SSH sessions; "" = DefaultOnwardSSH
+	Telnet string `json:"telnet,omitempty"` // command for telnet sessions; "" = DefaultOnwardTelnet
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// Commands typed on a jump host by default: they work on Linux, macOS and
+// Cisco IOS, IOS XE and NX-OS.
+const (
+	DefaultOnwardSSH    = "ssh -l <USER> -p <PORT> <HOST>"
+	DefaultOnwardTelnet = "telnet <HOST> <PORT>"
+)
+
+// IPMIOptions are the settings of an IPMI Serial-over-LAN session.
+type IPMIOptions struct {
+	// CipherSuite: the RMCP+ cipher suite (3, 17…); 0 = try the usual ones.
+	CipherSuite int `json:"cipherSuite,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
 // Session is the connection definition of a non-group node.
 type Session struct {
 	Protocol Protocol `json:"protocol"`
@@ -276,6 +365,13 @@ type Session struct {
 	KeepName bool `json:"keepName,omitempty"`
 
 	Serial *Serial `json:"serial,omitempty"`
+	// Local: what a local session runs (Protocol "local").
+	Local *LocalOptions `json:"local,omitempty"`
+	// IPMI: settings of an IPMI Serial-over-LAN session.
+	IPMI *IPMIOptions `json:"ipmi,omitempty"`
+	// Onward: when this SSH session is a jump host, how sessions go on
+	// from it (nil = TCP forwarding).
+	Onward *OnwardOptions `json:"onward,omitempty"`
 
 	Expect        []ExpectRule   `json:"expect,omitempty"`
 	ExpectTimeout int            `json:"expectTimeout,omitempty"` // default per rule, seconds
@@ -401,14 +497,19 @@ type Settings struct {
 	// without it closes the open sessions).
 	LockSessions string `json:"lockSessions,omitempty"`
 
-	SidebarWidth   int              `json:"sidebarWidth,omitempty"`
-	SidebarHidden  bool             `json:"sidebarHidden,omitempty"` // session list folded away (the Sessions icon)
-	PasteDelay     int              `json:"pasteDelay"`              // ms between lines of a multi-line paste
-	Highlight      bool             `json:"highlight"`
-	HighlightRules []HighlightRule  `json:"highlightRules"`
-	Snippets       []Snippet        `json:"snippets"`
-	NetBoxURL      string           `json:"netboxUrl,omitempty"`
-	TeamLibraries  []TeamLibraryRef `json:"teamLibraries,omitempty"`
+	SidebarWidth   int             `json:"sidebarWidth,omitempty"`
+	SidebarHidden  bool            `json:"sidebarHidden,omitempty"` // session list folded away (the Sessions icon)
+	PasteDelay     int             `json:"pasteDelay"`              // ms between lines of a multi-line paste
+	Highlight      bool            `json:"highlight"`
+	HighlightRules []HighlightRule `json:"highlightRules"`
+	Snippets       []Snippet       `json:"snippets"`
+	NetBoxURL      string          `json:"netboxUrl,omitempty"`
+	// Password managers for credential profiles: the KeePass database and
+	// its key file, and the Bitwarden program (bw; "" = on the PATH).
+	KeePassFile      string           `json:"keepassFile,omitempty"`
+	KeePassKeyFile   string           `json:"keepassKeyFile,omitempty"`
+	BitwardenProgram string           `json:"bitwardenProgram,omitempty"`
+	TeamLibraries    []TeamLibraryRef `json:"teamLibraries,omitempty"`
 
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`
@@ -549,6 +650,8 @@ func DefaultPort(p Protocol) int {
 		return 22
 	case ProtoTelnet:
 		return 23
+	case ProtoIPMI:
+		return 623
 	}
 	return 0
 }

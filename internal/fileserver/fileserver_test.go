@@ -208,8 +208,11 @@ func TestHTTP(t *testing.T) {
 	if _, err := m.Start(Config{Kind: "http", Folder: dir, Bind: "127.0.0.1", Port: port, AllowUpload: true, MaxUpload: 1000}); err != nil {
 		t.Fatal(err)
 	}
+	// A new client: a kept connection may still be to the stopped server.
+	fresh := &http.Client{Transport: &http.Transport{}}
+	defer fresh.CloseIdleConnections()
 	req, _ = http.NewRequest(http.MethodPut, base+"/big.bin", bytes.NewReader(data(5000)))
-	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusRequestEntityTooLarge {
+	if resp, err := fresh.Do(req); err != nil || resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("large upload: %v %v", resp, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "big.bin")); err == nil {

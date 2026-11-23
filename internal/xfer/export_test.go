@@ -11,3 +11,11 @@ func SetSFTPStart(d time.Duration) (restore func()) {
 	sftpStart = d
 	return func() { sftpStart = old }
 }
+
+// SetChannelWait changes how long a device may take to answer a request
+// for a channel (tests).
+func SetChannelWait(d time.Duration) (restore func()) {
+	old := channelWait
+	channelWait = d
+	return func() { channelWait = old }
+}

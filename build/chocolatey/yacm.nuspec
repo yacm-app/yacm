@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>yacm</id>
+    <version>1.1.0</version>
+    <title>YACM (Yet Another Connection Manager)</title>
+    <authors>The YACM Authors</authors>
+    <owners>yacm-app</owners>
+    <projectUrl>https://yacm.app</projectUrl>
+    <packageSourceUrl>https://github.com/yacm-app/yacm/tree/main/build/chocolatey</packageSourceUrl>
+    <projectSourceUrl>https://github.com/yacm-app/yacm</projectSourceUrl>
+    <docsUrl>https://github.com/yacm-app/yacm/blob/main/docs/guide.md</docsUrl>
+    <bugTrackerUrl>https://github.com/yacm-app/yacm/issues</bugTrackerUrl>
+    <releaseNotes>https://github.com/yacm-app/yacm/releases/tag/v1.1.0</releaseNotes>
+    <iconUrl>https://cdn.jsdelivr.net/gh/yacm-app/yacm@main/build/appicon-256.png</iconUrl>
+    <licenseUrl>https://github.com/yacm-app/yacm/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <copyright>The YACM Authors</copyright>
+    <tags>ssh telnet serial console terminal network cisco connection-manager sftp tftp foss</tags>
+    <summary>SSH, telnet and serial connection manager for network engineers.</summary>
+    <description><![CDATA[YACM keeps your SSH, telnet and serial sessions in one tree and opens them in tabs: jump host chains, credential profiles, login automation, Type to many, session logs, file transfer and file servers, team libraries, and import from SecureCRT, MobaXterm, mRemoteNG, PuTTY and others.
+
+Free and open source (GPL-3.0-or-later). Packaged by the YACM project. Needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11 normally include.
+]]></description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

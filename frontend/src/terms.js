@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { api, on, state, runtime, colorOf, reload, isNewerType, newerTypeText, saveSettings } from './api.js';
-import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC, fitMiddle } from './ui.js';
+import { h, toast, errMsg, confirmDialog, openDialog, field, portGlyph, icon, contextMenu, anyDialogOpen, plural, KEY, shortcut, zoomWheel, IS_MAC, fitMiddle, localLabel } from './ui.js';
 import { Highlighter, compileAlerts, stripAnsi } from './highlight.js';
 import { zoomTree, inSidebar, applyTreeZoom } from './treezoom.js';
 import { openPalette, editLibrary } from './snippets.js';
@@ -826,8 +826,9 @@ export async function restoreTabs() {
 
 /** @param {string} spec @param {{ after?: string }} [opts] */
 export async function openQuick(spec, { after } = {}) {
-  const proto = spec.startsWith('telnet://') ? 'telnet' : spec.startsWith('serial://') ? 'serial' : 'ssh';
-  const node = { id: 'quick', name: spec.replace(/^(ssh|telnet|serial):\/\//, ''), session: { protocol: proto } };
+  const proto = spec.startsWith('telnet://') ? 'telnet' : spec.startsWith('serial://') ? 'serial' : spec.startsWith('local://') ? 'local' : 'ssh';
+  const name = proto === 'local' ? localLabel({ kind: 'shell', shell: spec.slice(8) }) : spec.replace(/^(ssh|telnet|serial):\/\//, '');
+  const node = { id: 'quick', name, session: { protocol: proto, local: proto === 'local' ? { kind: 'shell', shell: spec.slice(8) } : undefined } };
   const t = addTab(crypto.randomUUID(), node, after);
   t.quick = spec;
   t.fitAndResize();
@@ -1303,7 +1304,7 @@ function renderTabbar() {
       style: { '--proto': `var(--${proto})` },
     },
       h('span', { class: `led ${t.waiting ? 'waiting' : t.state}` }),
-      isTerm(t) ? portGlyph(proto) : icon(t.kind, `port ${t.kind}`),
+      isTerm(t) ? portGlyph(proto, t.node.session?.local?.kind) : icon(t.kind, `port ${t.kind}`),
       h('span', { class: 'title', text: t.kind === 'terminal' ? tabName(t) : t.node.name }),
       t.alert ? h('span', { class: 'alert-dot', title: `Alert: ${t.alert.line}`, style: { background: alertColor(t.alert.color) } }) : null,
       h('button', { class: 'close', title: `Close tab (${KEY.close})`, 'aria-label': 'Close tab', text: '×', on: { click: e => { e.stopPropagation(); requestClose(id); } } }));
@@ -1479,6 +1480,10 @@ function facts(t) {
   } else if (proto === 'telnet') {
     const via = t.summary.match(/through jump host (\S+)/);
     out.push(['Encryption', via ? `SSH up to the jump host ${via[1]}, clear text from there to the device` : 'none, telnet sends everything in clear text', true]);
+  } else if (proto === 'local') {
+    out.push(['Runs', t.summary.replace(/^local /, '')]);
+  } else if (proto === 'ipmi') {
+    out.push(['Console', 'IPMI Serial-over-LAN', false, 'Type ~. at the start of a line to end Serial-over-LAN.']);
   } else {
     out.push(['Line', t.summary.replace(/^serial /, '').replace(' · ', ', ')]);
   }
@@ -1626,7 +1631,11 @@ function renderBroadcast() {
   const box = document.getElementById('broadcast');
   box.hidden = !broadcast.on;
   if (!broadcast.on) return;
-  box.replaceChildren(h('strong', { text: 'Typing goes to:' }));
+  // Two rows: the sessions (they wrap, and scroll when there are many), then
+  // the command field across the whole width, however many sessions there are.
+  const head = h('strong', { text: 'Typing goes to:' });
+  const targets = h('div', { class: 'targets' }, head);
+  box.replaceChildren(targets);
   // "All" checks or clears every open tab. Tabs opened later never join by
   // themselves: "All" then shows as partly checked, so a command never goes
   // to a device the user has not seen ticked.
@@ -1636,6 +1645,8 @@ function renderBroadcast() {
     const n = terms.filter(id => broadcast.ids.has(id)).length;
     all.checked = n > 0 && n === terms.length;
     all.indeterminate = n > 0 && n < terms.length;
+    // The count, since with many sessions some are scrolled out of sight.
+    head.textContent = `Typing goes to (${n} of ${terms.length}):`;
   };
   // After a click on a check box the keys go back to the terminal: a space
   // would otherwise tick or clear the box instead of reaching the devices.
@@ -1646,12 +1657,12 @@ function renderBroadcast() {
     renderTabbar();
     back();
   });
-  box.append(h('label', { class: 'all', title: 'Check or clear every open session' }, all, 'All'));
+  targets.append(h('label', { class: 'all', title: 'Check or clear every open session' }, all, 'All'));
   for (const id of terms) {
     const t = tabs.get(id);
     const cb = h('input', { type: 'checkbox', checked: broadcast.ids.has(id) });
     cb.addEventListener('change', () => { cb.checked ? broadcast.ids.add(id) : broadcast.ids.delete(id); syncAll(); renderTabbar(); back(); });
-    box.append(h('label', { title: t.state === 'connected' ? tabName(t) : `${tabName(t)} (${t.state}): receives nothing until it is connected` }, cb, tabName(t)));
+    targets.append(h('label', { title: t.state === 'connected' ? tabName(t) : `${tabName(t)} (${t.state}): receives nothing until it is connected` }, cb, tabName(t)));
   }
   syncAll();
   const line = h('input', { class: 'inline-input', placeholder: 'Send one command to the checked sessions', spellcheck: false,
@@ -1671,7 +1682,7 @@ function renderBroadcast() {
     if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); send(' '); }
     else if (e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); send('\x03'); }
   });
-  box.append(line, h('button', { class: 'btn small', text: 'Done', on: { click: toggleBroadcast } }));
+  box.append(h('div', { class: 'send' }, line, h('button', { class: 'btn small', text: 'Done', on: { click: toggleBroadcast } })));
 }
 
 // ---------- keyboard ----------

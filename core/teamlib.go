@@ -433,6 +433,7 @@ func copyNodes(nodes []*store.Node, logins map[string]string, keepIDs bool, rena
 		// file into your own sessions.
 		store.DropUnknown(&n)
 		store.DisarmTunnels(&n)
+		store.DisarmLocal(&n)
 		n.Library = ""
 		n.ID = ids[src.ID]
 		if p, ok := ids[n.ParentID]; ok {

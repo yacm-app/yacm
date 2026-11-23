@@ -56,6 +56,19 @@ func (s *Store) UpsertCredential(c *Credential) (*Credential, error) {
 	if c.Auth != AuthPublicKey {
 		c.KeyPath, c.CertPath = "", ""
 	}
+	if src := c.Source; src != nil {
+		switch src.Kind {
+		case "":
+			c.Source = nil
+		case "keepass", "bitwarden":
+			src.Ref = strings.TrimSpace(src.Ref)
+			if src.Ref == "" || strings.ContainsAny(src.Ref, "\r\n") || src.Kind == "bitwarden" && strings.HasPrefix(src.Ref, "-") {
+				return nil, errors.New("give the password manager entry: its name, path or ID")
+			}
+		default:
+			return nil, fmt.Errorf("unknown password manager %q", src.Kind)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.readOnly {
@@ -73,6 +86,9 @@ func (s *Store) UpsertCredential(c *Credential) (*Credential, error) {
 	cc.Updated = time.Now().UTC()
 	if old, ok := s.creds[cc.ID]; ok {
 		cc.Extra = jsonx.Keep(cc.Extra, old.Extra)
+		if cc.Source != nil && old.Source != nil {
+			cc.Source.Extra = jsonx.Keep(cc.Source.Extra, old.Source.Extra)
+		}
 	}
 	s.creds[cc.ID] = &cc
 	if err := s.saveLocked(); err != nil {
@@ -178,11 +194,15 @@ type Effective struct {
 	Algorithms    AlgoProfile `json:"algorithms,omitempty"`
 	JumpVia       string      `json:"jumpVia,omitempty"`
 	Hops          []Hop       `json:"hops,omitempty"` // jump hops in order, target excluded
-	Color         string      `json:"color,omitempty"`
-	AntiIdle      int         `json:"antiIdle,omitempty"` // seconds, 0 = off
-	AntiIdleText  string      `json:"antiIdleText,omitempty"`
-	Proxy         *EffProxy   `json:"proxy,omitempty"` // outbound proxy for the first hop
-	Warnings      []string    `json:"warnings,omitempty"`
+	// Onward is the command typed on the last jump host to reach the device
+	// (its Onward mode "command"); "" = TCP forwarding. OnwardVia names it.
+	Onward       string    `json:"onward,omitempty"`
+	OnwardVia    string    `json:"onwardVia,omitempty"`
+	Color        string    `json:"color,omitempty"`
+	AntiIdle     int       `json:"antiIdle,omitempty"` // seconds, 0 = off
+	AntiIdleText string    `json:"antiIdleText,omitempty"`
+	Proxy        *EffProxy `json:"proxy,omitempty"` // outbound proxy for the first hop
+	Warnings     []string  `json:"warnings,omitempty"`
 }
 
 // EffProxy is the outbound proxy a session uses, with its login.
@@ -384,6 +404,11 @@ func (s *Store) jumpHopsLocked(n *Node, e *Effective, visiting map[string]bool) 
 			return err
 		}
 		e.Hops = hops
+		if j, ok := s.nodeLocked(via); ok && j.Session != nil {
+			if cmd := j.Session.Onward.OnwardCommand(ss.Protocol); cmd != "" {
+				e.Onward, e.OnwardVia = cmd, j.Name
+			}
+		}
 		return nil
 	}
 	for i, j := range ss.Jump {

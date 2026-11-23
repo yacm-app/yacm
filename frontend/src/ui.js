@@ -362,15 +362,28 @@ export function icon(name, cls = '') {
 }
 
 // portGlyph is the icon of a connection type (coloured by type).
-export function portGlyph(proto) {
+/** @param {string} proto @param {string} [kind] local sessions: shell, docker or kubectl */
+export function portGlyph(proto, kind = '') {
   // Only the types this version can open; a type from a newer YACM gets the
   // dashed question mark even when its shape is drawn already.
-  const known = ['ssh', 'telnet', 'serial'].includes(proto);
-  const svg = icon(known ? proto : 'newer', `port ${known ? proto : 'unknown'}`);
+  const known = ['ssh', 'telnet', 'serial', 'local', 'ipmi'].includes(proto);
+  const shape = proto === 'local' && (kind === 'docker' || kind === 'kubectl') ? 'container' : proto;
+  const svg = icon(known ? shape : 'newer', `port ${known ? proto : 'unknown'}`);
   return svg;
 }
 
-export const protoLabel = { ssh: 'SSH', telnet: 'Telnet', serial: 'Serial' };
+export const protoLabel = { ssh: 'SSH', telnet: 'Telnet', serial: 'Serial', local: 'Local', ipmi: 'IPMI SOL' };
+
+// localLabel describes what a local session runs (as localterm.Label).
+const SHELL_NAMES = { powershell: 'PowerShell', pwsh: 'PowerShell 7', cmd: 'Command Prompt', wsl: 'WSL', bash: 'bash', zsh: 'zsh', fish: 'fish', sh: 'sh' };
+/** @param {any} lo */
+export function localLabel(lo) {
+  if (!lo) return 'local shell';
+  if (lo.kind === 'docker') return `docker exec ${lo.target}`;
+  if (lo.kind === 'kubectl') return `kubectl exec ${lo.namespace ? lo.namespace + '/' : ''}${lo.target}`;
+  if (SHELL_NAMES[lo.shell]) return `local ${SHELL_NAMES[lo.shell]}`;
+  return lo.shell ? `local ${lo.shell.split(/[\\/]/).pop()}` : 'local shell';
+}
 
 export function uuid() {
   return crypto.randomUUID();

@@ -325,12 +325,13 @@ func TestSecureCRTRootFolder(t *testing.T) {
 }
 
 func TestCountSessions(t *testing.T) {
-	far := time.Now().Add(time.Minute)
 	dir := "testdata/foreign/securecrt-many/Sessions"
 	res, err := Run(KindSecureCRT, dir, "", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A slow runner (race detector, coverage) needs as long again.
+	far := time.Now().Add(10 * time.Minute)
 	if n := CountSessions(Source{Kind: KindSecureCRT, Path: dir}, far); n < res.Report.Sessions || n == 0 {
 		t.Fatalf("SecureCRT folder: %d, import finds %d", n, res.Report.Sessions)
 	}

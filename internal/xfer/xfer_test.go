@@ -10,6 +10,7 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -401,5 +402,74 @@ func TestDeviceNameAndSpaceAlias(t *testing.T) {
 	}
 	if got := xfer.SpaceAlias(filepath.Join(dir, "a_b.txt")); got != filepath.Join(dir, "a_b.txt") {
 		t.Errorf("ambiguous alias = %q", got)
+	}
+}
+
+// A connection whose other end stops answering requests for a channel (a
+// jump host that lost the device): the command gives up, the link gets a
+// new connection and runs it there.
+func TestChannelNoAnswer(t *testing.T) {
+	defer xfer.SetChannelWait(300 * time.Millisecond)()
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := ssh.NewSignerFromKey(priv)
+	cfg := fakedevice.PasswordConfig("admin", "pw", signer)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			nc, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				sc, chans, reqs, err := ssh.NewServerConn(nc, cfg)
+				if err != nil {
+					return
+				}
+				defer sc.Close()
+				go ssh.DiscardRequests(reqs)
+				for range chans { // never answered
+				}
+			}()
+		}
+	}()
+	dial := func(ctx context.Context) (*ssh.Client, error) {
+		return ssh.Dial("tcp", ln.Addr().String(), &ssh.ClientConfig{User: "admin", Auth: []ssh.AuthMethod{ssh.Password("pw")}, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 5 * time.Second})
+	}
+	c, err := dial(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+
+	start := time.Now()
+	if _, err := xfer.OpenSession(context.Background(), c); !errors.Is(err, xfer.ErrNoAnswer) {
+		t.Fatalf("open: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := xfer.OpenSession(ctx, c); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("open with a deadline: %v", err)
+	}
+	// Through a link: the first channel gets no answer, the link dials
+	// again (three times at most) and then reports it.
+	redials := 0
+	l := xfer.NewLink(c, func(ctx context.Context) (*ssh.Client, error) {
+		redials++
+		nc, err := dial(ctx)
+		if err == nil {
+			t.Cleanup(func() { nc.Close() })
+		}
+		return nc, err
+	})
+	_, err = xfer.OpenSCP(l).List(context.Background(), "flash:")
+	if err == nil || !strings.Contains(err.Error(), "did not answer") || redials == 0 {
+		t.Fatalf("list: %v after %d new connections", err, redials)
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Errorf("took %v", took)
 	}
 }

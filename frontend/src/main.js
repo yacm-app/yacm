@@ -12,11 +12,10 @@ import { initPrompts } from './prompts.js';
 import { initFiles, openFiles } from './files.js';
 import { initServers } from './servers.js';
 import { initActivity } from './activity.js';
-import { editSession, editGroup } from './editor.js';
+import { editSession, editGroup, editSessions } from './editor.js';
 import { openSettings, lockScreen } from './settings.js';
 import { importMenu, exportDialog, importSource } from './transfer.js';
 import { openProfiles } from './profiles.js';
-import { editMany } from './bulk.js';
 import { editLibrary } from './snippets.js';
 import { openSwitcher } from './switcher.js';
 import { toast, errMsg, anyDialogOpen, shortcut, KEY, textFieldMenus } from './ui.js';
@@ -154,7 +153,7 @@ async function boot() {
     newGroup: pid => editGroup(null, pid),
     connectGroup: id => openMany(sessionsUnder(id)),
     connectMany: async ids => openMany(await api.SessionsUnder(ids)),
-    editMany: ids => editMany(ids),
+    editMany: ids => editSessions(ids),
     exportNode: id => exportDialog(id),
     exportMany: ids => exportDialog(ids),
     exportAll: () => exportDialog(null),

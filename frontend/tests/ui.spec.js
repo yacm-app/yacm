@@ -257,7 +257,7 @@ test('Type to many has an All box that follows the session boxes', async ({ page
   await connectTabs(page, ['core-sw1', 'core-sw2']);
   await page.getByRole('button', { name: 'Type to many' }).click();
   const bar = page.locator('#broadcast');
-  await expect(bar).toContainText('Typing goes to:');
+  await expect(bar).toContainText('Typing goes to (2 of 2):');
   const all = bar.getByLabel('All sessions');
   const boxes = bar.locator('label:not(.all) input');
   await expect(boxes).toHaveCount(2);
@@ -320,6 +320,23 @@ test('the session editor previews the font size, and a cleared size goes back to
   await expect(preview).toHaveCSS('font-size', '22px');
   await size.fill('');
   await expect(preview).toHaveCSS('font-size', '14px');
+  expect(errors).toEqual([]);
+});
+
+test('the user name is edited under Authentication, next to the login', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree .row.session', { hasText: 'core-sw1' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  const pane = page.locator('.editor .pane');
+  await expect(pane.locator('.field', { hasText: 'Host' }).first()).toBeVisible();
+  await expect(pane.locator('label.field', { hasText: 'Username' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Authentication' }).click();
+  const user = pane.locator('label.field', { hasText: 'Username' }).locator('input');
+  await expect(user).toHaveValue('admin');
+  await user.fill('jsmith');
+  await page.getByRole('button', { name: 'Save session' }).click();
+  const saved = await calls(page, 'SaveNode');
+  expect(saved.at(-1).args[0].session.user).toBe('jsmith');
   expect(errors).toEqual([]);
 });
 
@@ -1438,13 +1455,57 @@ test('editing sessions together switches telnet to SSH and offers to drop the te
   await page.locator('#tree .row', { hasText: 'edge-1' }).click({ button: 'right' });
   await page.getByText(/Edit 3 sessions together/).click();
   const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
-  await dlg.getByText('Connection type', { exact: true }).click();
+  await expect(dlg.locator('.field', { hasText: 'Host' }).locator('input')).toBeDisabled();
+  await dlg.getByRole('radio', { name: 'SSH' }).click();
   await expect(dlg).toContainText('2 sessions change to SSH');
-  await expect(dlg).toContainText('1 serial session stays');
-  await expect(dlg).toContainText('from 1 session: SSH logs in itself');
-  await dlg.getByRole('button', { name: 'Apply' }).click();
-  const req = (await calls(page, 'BulkUpdate')).at(-1).args[0];
-  expect(req.change).toEqual({ protocol: 'ssh', dropLoginRules: true });
+  await expect(dlg).toContainText('1 serial or local session stays');
+  await expect(dlg).toContainText('from 1 session');
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  const sum = page.getByRole('dialog', { name: 'Change 1 setting in 3 sessions?' });
+  await expect(sum).toContainText('Protocol');
+  await sum.getByRole('button', { name: 'Change them' }).click();
+  const req = (await calls(page, 'PatchSessions')).at(-1).args[0];
+  expect(req.patch.set).toEqual(['protocol']);
+  expect(req.patch.session.protocol).toBe('ssh');
+  expect(req.patch.dropLoginRules).toBe(true);
+  expect(req.ids.sort()).toEqual(['c1', 't1', 't2']);
+  expect(errors).toEqual([]);
+});
+
+test('editing sessions together: only what changes is sent, and differing rules need a choice', async ({ page }) => {
+  const nodes = [
+    { id: 'a', parentId: '', name: 'r1', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'ann', expect: [{ id: 'x', active: true, expect: '>', send: 'enable', return: true }] } },
+    { id: 'b', parentId: '', name: 'r2', order: 1, session: { protocol: 'ssh', host: '10.0.0.2', port: 2222, user: 'bob' } },
+  ];
+  const errors = await open(page, { nodes });
+  await page.locator('#tree .row', { hasText: 'r1' }).click();
+  await page.locator('#tree .row', { hasText: 'r2' }).click({ modifiers: ['Control'] });
+  await page.locator('#tree .row', { hasText: 'r2' }).click({ button: 'right' });
+  await page.getByText(/Edit 2 sessions together/).click();
+  const dlg = page.locator('.dialog').filter({ hasText: 'Edit 2 sessions together' });
+  await expect(dlg.locator('.multi-note')).toContainText('Different between them now: Port');
+  await dlg.getByRole('button', { name: 'Authentication' }).click();
+  await expect(dlg.locator('.multi-note')).toContainText('User name');
+  await dlg.locator('label.field', { hasText: 'Username' }).locator('input').fill('jsmith');
+  await expect(dlg.getByRole('button', { name: 'Authentication' })).toHaveClass(/changed/);
+  await dlg.getByRole('button', { name: 'Automation' }).click();
+  await expect(dlg.locator('.list-mode').first()).toContainText('The sessions have different rules');
+  await dlg.getByRole('button', { name: 'Add rule' }).click();
+  await dlg.locator('table.rules tr').nth(1).locator('input[type=text]').first().fill('#');
+  await dlg.locator('table.rules tr').nth(1).locator('input[type=text]').nth(1).fill('terminal length 0');
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  await expect(dlg).toContainText('Choose Add to each, Replace in each or Remove matching for automation rules');
+  await dlg.locator('.list-mode').first().getByRole('radio', { name: 'Add to each' }).click();
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  const sum = page.getByRole('dialog', { name: 'Change 2 settings in 2 sessions?' });
+  await expect(sum).toContainText('Automation rules: add to each');
+  await sum.getByRole('button', { name: 'Change them' }).click();
+  const req = (await calls(page, 'PatchSessions')).at(-1).args[0];
+  expect(req.patch.set.sort()).toEqual(['expect', 'user']);
+  expect(req.patch.lists).toEqual({ expect: 'add' });
+  expect(req.patch.session.user).toBe('jsmith');
+  expect(req.patch.session.expect.map(r => r.send)).toEqual(['terminal length 0']);
+  expect(req.patch.parentId).toBe(null);
   expect(errors).toEqual([]);
 });
 
@@ -1614,5 +1675,186 @@ test('the tab menu closes all tabs, asking once while sessions are connected', a
   await page.getByRole('dialog', { name: 'Close 2 tabs?' }).getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('#tabbar .tab')).toHaveCount(0);
   expect((await calls(page, 'CloseTab')).length).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test('Type to many keeps the command field on its own full-width row, however many sessions', async ({ page }) => {
+  const errors = await open(page);
+  await page.setViewportSize({ width: 1200, height: 700 });
+  const search = page.locator('#search');
+  for (let i = 1; i <= 30; i++) {
+    await search.fill(`admin@192.0.2.${i}`);
+    await search.press('Enter');
+    await expect(page.locator('.tab')).toHaveCount(i);
+    // The new tab takes the focus a moment later; wait for it, or it can
+    // take it from the field while the next address is typed.
+    await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea'));
+  }
+  await page.getByRole('button', { name: 'Type to many' }).click();
+  const bar = page.locator('#broadcast');
+  await expect(bar.locator('label:not(.all)')).toHaveCount(30);
+  const field = bar.locator('.inline-input');
+  const fb = await field.boundingBox(), bb = await bar.boundingBox(), tb = await bar.locator('.targets').boundingBox();
+  // Below every session, and most of the bar wide.
+  expect(fb.y).toBeGreaterThanOrEqual(tb.y + tb.height - 1);
+  expect(fb.width).toBeGreaterThan(bb.width * 0.7);
+  // Many sessions scroll instead of pushing the terminal away.
+  expect(tb.height).toBeLessThan(120);
+  await expect(bar.locator('.targets strong')).toHaveText('Typing goes to (1 of 30):');
+  expect(errors).toEqual([]);
+});
+
+test('a folder keeps its sessions sorted, and arranging by hand asks first', async ({ page }) => {
+  const nodes = [
+    { id: 'g', parentId: '', name: 'Sites', isGroup: true, expanded: true, order: 0 },
+    { id: 'sub', parentId: 'g', name: 'Access', isGroup: true, expanded: true, order: 0 },
+    { id: 'a1', parentId: 'sub', name: 'sw10', order: 0, session: { protocol: 'ssh', host: '10.0.0.10', port: 22 } },
+    { id: 'a2', parentId: 'sub', name: 'sw2', order: 1, session: { protocol: 'ssh', host: '10.0.0.9', port: 22 } },
+    { id: 'r10', parentId: 'g', name: 'r10', order: 1, session: { protocol: 'telnet', host: 'r10.example.net', port: 23 } },
+    { id: 'r2', parentId: 'g', name: 'r2', order: 2, session: { protocol: 'ssh', host: '10.0.0.2', port: 22 } },
+    { id: 'r1', parentId: 'g', name: 'R1', order: 3, session: { protocol: 'ssh', host: '10.0.0.200', port: 22 } },
+  ];
+  const errors = await open(page, { nodes });
+  const names = () => page.locator('#tree .row .name').allInnerTexts();
+  expect(await names()).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'r10', 'r2', 'R1']);
+  const sortBy = async (folder, item) => {
+    await page.locator('#tree .row.group', { hasText: folder }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Sort by' }).hover();
+    await page.locator('.menu.submenu').getByRole('menuitem', { name: item }).click();
+  };
+  await sortBy('Sites', 'Name (A to Z)');
+  // Natural order, and only this folder.
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'R1', 'r2', 'r10']);
+  await sortBy('Sites', 'Address');
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'r2', 'R1', 'r10']);
+  await sortBy('Sites', 'Also its subfolders');
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw2', 'sw10', 'r2', 'R1', 'r10']);
+  expect((await calls(page, 'SetFolderSort')).at(-1).args).toEqual(['g', { key: 'address', subfolders: true }]);
+  // Dragging inside the sorted folder asks to turn sorting off.
+  await page.locator('#tree .row', { hasText: 'r10' }).dragTo(page.locator('#tree .row', { hasText: 'r2' }), { targetPosition: { x: 20, y: 2 } });
+  const dlg = page.locator('dialog, .dialog').filter({ hasText: 'keeps its contents sorted by address' }).first();
+  await expect(dlg).toBeVisible();
+  await dlg.getByRole('button', { name: 'Turn sorting off' }).click();
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw2', 'sw10', 'r10', 'r2', 'R1']);
+  expect((await calls(page, 'SetChildOrder'))[0].args).toEqual(['g', ['sub', 'r2', 'r1', 'r10']]);
+  expect(errors).toEqual([]);
+});
+
+test('editing sessions together: opening every section changes nothing', async ({ page }) => {
+  const nodes = [
+    { id: 'a', parentId: '', name: 'r1', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'ann', antiIdle: 120, tunnels: [{ id: 't', type: 'local', port: 8443, host: '10.0.0.1', hostPort: 443 }] } },
+    { id: 'b', parentId: '', name: 'r2', order: 1, session: { protocol: 'telnet', host: '10.0.0.2', port: 23, logToFile: true, fontSize: 16 } },
+    { id: 'c', parentId: '', name: 'con', order: 2, session: { protocol: 'serial', serial: { device: 'COM1', baud: 9600 } } },
+  ];
+  const errors = await open(page, { nodes });
+  for (const name of ['r1', 'r2', 'con']) await page.locator('#tree .row', { hasText: name }).click({ modifiers: ['Control'] });
+  await page.locator('#tree .row', { hasText: 'r1' }).click({ button: 'right' });
+  await page.getByText(/Edit 3 sessions together/).click();
+  const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
+  for (const sec of ['Connection', 'Authentication', 'Jump hosts', 'Tunnels and proxy', 'Automation', 'Saved commands', 'Terminal and logs']) {
+    await dlg.locator('.editor > nav button', { hasText: sec }).click();
+  }
+  await expect(dlg.locator('.editor > nav button.changed')).toHaveCount(0);
+  await expect(dlg).not.toContainText('null');
+  await dlg.getByRole('button', { name: 'Save sessions' }).click();
+  await expect(dlg).toContainText('Nothing was changed.');
+  expect(await calls(page, 'PatchSessions')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a local session runs a shell or a container shell, and the tree opens a local terminal', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'New session' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New session' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('netbox shell');
+  await dlg.getByRole('radio', { name: 'Local' }).click();
+  await expect(dlg.getByRole('button', { name: 'Authentication' })).toBeDisabled();
+  await dlg.getByRole('radio', { name: 'Docker container' }).click();
+  await dlg.locator('label.field', { hasText: 'Container (name or ID)' }).locator('input').fill('netbox');
+  await dlg.locator('label.field', { hasText: 'Command in the container' }).locator('input').fill('bash');
+  await expect(dlg).toContainText('Runs as docker exec -it … bash');
+  await dlg.getByRole('button', { name: 'Create session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved.protocol).toBe('local');
+  expect(saved.local).toMatchObject({ kind: 'docker', target: 'netbox', command: 'bash' });
+  expect(saved.host).toBe('');
+  expect(saved.serial).toBeUndefined();
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'Open a local terminal' }).click();
+  await expect.poll(async () => (await calls(page, 'Connect')).at(-1)?.args[0].quick).toBe('local://');
+  await expect(page.locator('.tab', { hasText: 'local shell' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('an IPMI session opens the server console through the BMC', async ({ page }) => {
+  const errors = await open(page);
+  await page.locator('#tree').click({ button: 'right', position: { x: 60, y: 400 } });
+  await page.getByRole('menuitem', { name: 'New session' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New session' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('esx01 console');
+  await dlg.getByRole('radio', { name: 'IPMI SOL' }).click();
+  await expect(dlg.getByRole('button', { name: 'Jump hosts' })).toBeDisabled();
+  await expect(dlg.getByRole('button', { name: 'Tunnels and proxy' })).toBeDisabled();
+  await dlg.locator('label.field', { hasText: 'Host' }).locator('input').fill('10.1.1.20');
+  await expect(dlg.locator('label.field', { hasText: 'Port' }).locator('input')).toHaveValue('623');
+  await dlg.locator('.field', { hasText: 'Cipher suite' }).locator('select').selectOption('3');
+  await dlg.getByRole('button', { name: 'Authentication' }).click();
+  await expect(dlg).toContainText('The user name and password of the BMC');
+  await dlg.locator('label.field', { hasText: 'Username' }).locator('input').fill('root');
+  await dlg.getByRole('button', { name: 'Create session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved).toMatchObject({ protocol: 'ipmi', host: '10.1.1.20', port: 623, user: 'root', ipmi: { cipherSuite: 3 } });
+  expect(saved.local).toBeUndefined();
+  expect(saved.serial).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
+test('a jump host that does not forward types a command, and its sessions say so', async ({ page }) => {
+  const nodes = [
+    { id: 'j', parentId: '', name: 'core-rtr', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'jsmith' } },
+    { id: 'd', parentId: '', name: 'old-sw', order: 1, session: { protocol: 'telnet', host: '10.9.9.9', port: 23, jumpVia: 'j' } },
+  ];
+  const errors = await open(page, { nodes });
+  await page.locator('#tree .row', { hasText: 'core-rtr' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  let dlg = page.getByRole('dialog', { name: 'Edit core-rtr' });
+  await dlg.getByRole('button', { name: 'Jump hosts' }).click();
+  await dlg.getByRole('radio', { name: 'Type a command' }).click();
+  await dlg.locator('.field', { hasText: 'For telnet sessions' }).locator('input').fill('telnet <HOST> /vrf MGMT');
+  await dlg.getByRole('button', { name: 'Save session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved.onward).toEqual({ mode: 'command', ssh: '', telnet: 'telnet <HOST> /vrf MGMT' });
+  await page.locator('#tree .row', { hasText: 'old-sw' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  dlg = page.getByRole('dialog', { name: 'Edit old-sw' });
+  await dlg.getByRole('button', { name: 'Jump hosts' }).click();
+  await expect(dlg).toContainText('core-rtr does not forward connections: YACM logs in to it and types “telnet <HOST> /vrf MGMT”');
+  await expect(dlg).not.toContainText('When other sessions use this one');
+  expect(errors).toEqual([]);
+});
+
+test('a credential profile can take its password from KeePass, checked after unlocking it', async ({ page }) => {
+  const errors = await open(page, { settings: { keepassFile: '/home/jsmith/network.kdbx' } });
+  await page.locator('#activity').getByRole('button', { name: 'Credential profiles', exact: true }).click();
+  await page.getByRole('button', { name: 'New profile' }).click();
+  const dlg = page.getByRole('dialog', { name: 'New credential profile' });
+  await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('TACACS');
+  await dlg.getByRole('radio', { name: 'KeePass' }).click();
+  await expect(dlg).toContainText('/home/jsmith/network.kdbx');
+  const ref = dlg.locator('label.field', { hasText: 'KeePass entry' }).locator('input');
+  await ref.fill('Network/tacacs');
+  await dlg.getByRole('button', { name: 'Check' }).click();
+  const unlock = page.getByRole('dialog', { name: 'Unlock KeePass' });
+  await unlock.locator('input').fill('wrong');
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await expect(unlock).toContainText('wrong master password');
+  await unlock.locator('input').fill('kp-master');
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await expect(dlg).toContainText('Found. The password is read from there each time it is needed.');
+  await dlg.getByRole('button', { name: 'Create profile' }).click();
+  const [out, secrets] = (await calls(page, 'SaveCredential')).at(-1).args;
+  expect(out.source).toEqual({ kind: 'keepass', ref: 'Network/tacacs' });
+  expect(secrets.password).toBe(null);
   expect(errors).toEqual([]);
 });
