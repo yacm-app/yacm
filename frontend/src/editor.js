@@ -258,7 +258,7 @@ const LIST_MODES = [['add', 'Add to each'], ['replace', 'Replace in each'], ['re
 const MULTI_SECTIONS = {
   Connection: { protocol: 'Protocol', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
   Authentication: { credentialId: 'Login', user: 'User name', auth: 'Method', keyPath: 'Key file', certPath: 'Certificate', algorithms: 'Algorithms', agentForward: 'Agent forwarding' },
-  'Jump hosts': { jumpVia: 'Jump host', jump: 'Jump hosts' },
+  'Jump hosts': { jumpVia: 'Jump host', jump: 'Jump hosts', onward: 'As a jump host' },
   'Tunnels and proxy': { tunnels: 'Tunnels', proxy: 'Outbound proxy' },
   Automation: { expect: 'Automation rules', expectTimeout: 'Rule timeout', initialReturn: 'Press Enter once', before: 'Before connecting', after: 'After disconnecting' },
   'Saved commands': { macros: 'Saved commands' },
@@ -668,13 +668,22 @@ export async function editSession(node, parentId = '', startSection = '', multi 
       show(current);
     });
     out.push(field('Route', modeSel));
+    const viaNote = id => {
+      const j = id ? state.byId.get(id) : null;
+      const o = j?.session?.onward;
+      if (o?.mode !== 'command') return null;
+      const cmd = s.protocol === 'telnet' ? (o.telnet || 'telnet <HOST> <PORT>') : (o.ssh || 'ssh -l <USER> -p <PORT> <HOST>');
+      return h('p', { class: 'hint', style: { color: 'var(--muted)' }, text: `${j.name} does not forward connections: YACM logs in to it and types “${cmd}”, then answers the device’s password prompt. Your automation rules start once the device is reached.` });
+    };
     if (mode === 'session') {
       const via = sessionPicker({ value: s.jumpVia, nodes: () => sshSessions(n.id), label: 'Jump host session' });
-      via.addEventListener('change', () => (s.jumpVia = via.value));
-      out.push(field('Jump host session', via, 'Its own jump host is used too, so chains work.'));
+      via.addEventListener('change', () => { s.jumpVia = via.value; show(current); });
+      out.push(field('Jump host session', via, 'Its own jump host is used too, so chains work.'), viaNote(s.jumpVia));
+      out.push(...onwardFields());
       return out;
     }
-    if (mode !== 'custom') return out;
+    if (mode === 'inherit') out.push(viaNote(g.value));
+    if (mode !== 'custom') { out.push(...onwardFields()); return out; }
     const table = h('table', { class: 'rules' }, h('tr', {}, h('th', { text: '' }), h('th', { text: 'Host' }), h('th', { text: 'Port' }), h('th', { text: 'User' }), h('th', { text: 'Login' }), h('th', { text: 'Key file or password' }), h('th')));
     s.jump.forEach((j, i) => {
       const jc = j.credentialId ? state.credById.get(j.credentialId) : null;
@@ -702,6 +711,29 @@ export async function editSession(node, parentId = '', startSection = '', multi 
         h('td', { style: { width: '24px' } }, h('button', { type: 'button', class: 'del', title: 'Remove hop', text: '×', on: { click: () => { s.jump.splice(i, 1); sec.jumpOrigin.splice(i, 1); const nj = {}; Object.entries(sec.jump).forEach(([k, v]) => { if (+k < i) nj[k] = v; else if (+k > i) nj[+k - 1] = v; }); sec.jump = nj; show(current); } } }))));
     });
     out.push(table, h('button', { type: 'button', class: 'btn small', text: 'Add jump host', on: { click: () => { s.jump.push({ host: '', port: 22, user: s.user, auth: 'agent', keyPath: '', credentialId: '' }); sec.jumpOrigin.push(-1); show(current); } } }));
+    out.push(...onwardFields());
+    return out;
+  }
+
+  // onwardFields: how other sessions go on when this SSH session is their
+  // jump host.
+  function onwardFields() {
+    if (s.protocol !== 'ssh') return [];
+    const o = s.onward || null;
+    const mode = seg([{ value: '', label: 'Forward the connection (like ssh -J)' }, { value: 'command', label: 'Type a command' }], o?.mode || '', v => {
+      s.onward = v ? { mode: 'command', ssh: o?.ssh || '', telnet: o?.telnet || '' } : null;
+      show(current);
+    });
+    const out = [h('h3', { text: 'When other sessions use this one as their jump host', style: { marginTop: '18px' } }),
+      h('div', { class: 'field' }, mode,
+        h('span', { class: 'hint', text: 'Type a command for jump hosts that do not forward connections: a router, or a server with AllowTcpForwarding no. YACM logs in here, types the command to reach the device, answers its password prompt, and disconnects the tab if the device cannot be reached.' }))];
+    if (o?.mode === 'command') {
+      const cmd = (key, placeholder) => h('input', { type: 'text', value: o[key] || '', spellcheck: false, class: 'mono-input', placeholder, on: { input: e => (o[key] = e.target.value) } });
+      out.push(h('div', { class: 'grid2' },
+        field('For SSH sessions', cmd('ssh', 'ssh -l <USER> -p <PORT> <HOST>')),
+        field('For telnet sessions', cmd('telnet', 'telnet <HOST> <PORT>'))),
+        h('p', { class: 'hint', style: { color: 'var(--faint)' }, text: 'Empty uses the command shown, which works on Linux, macOS and Cisco IOS, IOS XE and NX-OS. One ssh, telnet or connect command with <USER>, <HOST> and <PORT>, for example telnet <HOST> /vrf MGMT.' }));
+    }
     return out;
   }
 

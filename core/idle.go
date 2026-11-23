@@ -92,8 +92,11 @@ func (a *App) watchSession(ctx context.Context, t *tab) {
 	if window == 0 {
 		window = hostnameWindow
 	}
-	// A local shell or container is not a device to name.
-	hostChecked := t.node.Session != nil && t.node.Session.Protocol == store.ProtoLocal
+	// A local shell or container is not a device to name, and the first
+	// prompt after going on from a jump host by a command is the jump host's.
+	t.mu.Lock()
+	hostChecked := (t.node.Session != nil && t.node.Session.Protocol == store.ProtoLocal) || t.onward != nil
+	t.mu.Unlock()
 	for {
 		select {
 		case <-ctx.Done():

@@ -54,6 +54,15 @@ func (v LocalOptions) MarshalJSON() ([]byte, error) {
 	return jsonx.Marshal(plain(v), v.Extra)
 }
 
+func (v *OnwardOptions) UnmarshalJSON(b []byte) error {
+	type plain OnwardOptions
+	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
+}
+func (v OnwardOptions) MarshalJSON() ([]byte, error) {
+	type plain OnwardOptions
+	return jsonx.Marshal(plain(v), v.Extra)
+}
+
 func (v *Credential) UnmarshalJSON(b []byte) error {
 	type plain Credential
 	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
@@ -204,6 +213,9 @@ func keepUnknownNode(c, old *Node) {
 		if c.Session.Local != nil && old.Session.Local != nil {
 			c.Session.Local.Extra = jsonx.Keep(c.Session.Local.Extra, old.Session.Local.Extra)
 		}
+		if c.Session.Onward != nil && old.Session.Onward != nil {
+			c.Session.Onward.Extra = jsonx.Keep(c.Session.Onward.Extra, old.Session.Onward.Extra)
+		}
 		for i := range c.Session.Tunnels {
 			for _, o := range old.Session.Tunnels {
 				if o.ID == c.Session.Tunnels[i].ID {
@@ -243,6 +255,9 @@ func DropUnknown(n *Node) {
 	}
 	if ss.Local != nil {
 		ss.Local.Extra = nil
+	}
+	if ss.Onward != nil {
+		ss.Onward.Extra = nil
 	}
 	for i := range ss.Jump {
 		ss.Jump[i].Extra = nil
@@ -319,7 +334,7 @@ func HasUnknown(n *Node) bool {
 	if ss == nil {
 		return false
 	}
-	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) || (ss.Local != nil && len(ss.Local.Extra) > 0) {
+	if !KnownProtocol(ss.Protocol) || len(ss.Extra) > 0 || (ss.Serial != nil && len(ss.Serial.Extra) > 0) || (ss.Local != nil && len(ss.Local.Extra) > 0) || (ss.Onward != nil && len(ss.Onward.Extra) > 0) {
 		return true
 	}
 	for _, j := range ss.Jump {

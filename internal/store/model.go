@@ -287,6 +287,27 @@ type LocalOptions struct {
 	Extra jsonx.Unknown `json:"-"`
 }
 
+// OnwardOptions say how sessions go on from an SSH session that is their
+// jump host. Mode "" forwards a TCP channel (like ssh -J). Mode "command"
+// is for jump hosts that cannot forward (a router, AllowTcpForwarding no):
+// YACM logs in to the jump host and types the command (ssh or telnet to
+// the device), then answers the device's password prompt.
+type OnwardOptions struct {
+	Mode   string `json:"mode"`
+	SSH    string `json:"ssh,omitempty"`    // command for SSH sessions; "" = DefaultOnwardSSH
+	Telnet string `json:"telnet,omitempty"` // command for telnet sessions; "" = DefaultOnwardTelnet
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// Commands typed on a jump host by default: they work on Linux, macOS and
+// Cisco IOS, IOS XE and NX-OS.
+const (
+	DefaultOnwardSSH    = "ssh -l <USER> -p <PORT> <HOST>"
+	DefaultOnwardTelnet = "telnet <HOST> <PORT>"
+)
+
 // Session is the connection definition of a non-group node.
 type Session struct {
 	Protocol Protocol `json:"protocol"`
@@ -320,6 +341,9 @@ type Session struct {
 	Serial *Serial `json:"serial,omitempty"`
 	// Local: what a local session runs (Protocol "local").
 	Local *LocalOptions `json:"local,omitempty"`
+	// Onward: when this SSH session is a jump host, how sessions go on
+	// from it (nil = TCP forwarding).
+	Onward *OnwardOptions `json:"onward,omitempty"`
 
 	Expect        []ExpectRule   `json:"expect,omitempty"`
 	ExpectTimeout int            `json:"expectTimeout,omitempty"` // default per rule, seconds

@@ -147,6 +147,17 @@ Hovering shows each label.
   is changed in one place. Hops can also be entered by hand. Each hop checks
   its own host key and negotiates its own algorithm profile. Telnet sessions
   can go through SSH jump hosts too (encrypted up to the jump host).
+- **Jump hosts that do not forward** (a router, or a server with
+  `AllowTcpForwarding no`): in the jump host's own session, *Jump hosts* >
+  *When other sessions use this one as their jump host* > *Type a command*.
+  Sessions that go through it then log in to the jump host, type
+  `ssh -l <USER> -p <PORT> <HOST>` or `telnet <HOST> <PORT>` (or your own
+  command, such as `telnet <HOST> /vrf MGMT`), answer the device's user name
+  and password prompts, and start their automation once the device is
+  reached. If the jump host cannot reach the device, or the device closes the
+  connection later, the tab disconnects instead of leaving you on the jump
+  host in a tab named after the device. The session is still the device: its
+  address, tags, logs, Go to session and reload watch work as usual.
 - **Telnet** (RFC 854 with ECHO, SGA, TERMINAL-TYPE and NAWS), clearly marked
   as unencrypted.
 - **Serial consoles**: COM ports and `/dev/ttyUSB*`, USB adapters listed with

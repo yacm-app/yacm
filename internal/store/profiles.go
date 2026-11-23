@@ -178,11 +178,15 @@ type Effective struct {
 	Algorithms    AlgoProfile `json:"algorithms,omitempty"`
 	JumpVia       string      `json:"jumpVia,omitempty"`
 	Hops          []Hop       `json:"hops,omitempty"` // jump hops in order, target excluded
-	Color         string      `json:"color,omitempty"`
-	AntiIdle      int         `json:"antiIdle,omitempty"` // seconds, 0 = off
-	AntiIdleText  string      `json:"antiIdleText,omitempty"`
-	Proxy         *EffProxy   `json:"proxy,omitempty"` // outbound proxy for the first hop
-	Warnings      []string    `json:"warnings,omitempty"`
+	// Onward is the command typed on the last jump host to reach the device
+	// (its Onward mode "command"); "" = TCP forwarding. OnwardVia names it.
+	Onward       string    `json:"onward,omitempty"`
+	OnwardVia    string    `json:"onwardVia,omitempty"`
+	Color        string    `json:"color,omitempty"`
+	AntiIdle     int       `json:"antiIdle,omitempty"` // seconds, 0 = off
+	AntiIdleText string    `json:"antiIdleText,omitempty"`
+	Proxy        *EffProxy `json:"proxy,omitempty"` // outbound proxy for the first hop
+	Warnings     []string  `json:"warnings,omitempty"`
 }
 
 // EffProxy is the outbound proxy a session uses, with its login.
@@ -384,6 +388,11 @@ func (s *Store) jumpHopsLocked(n *Node, e *Effective, visiting map[string]bool) 
 			return err
 		}
 		e.Hops = hops
+		if j, ok := s.nodeLocked(via); ok && j.Session != nil {
+			if cmd := j.Session.Onward.OnwardCommand(ss.Protocol); cmd != "" {
+				e.Onward, e.OnwardVia = cmd, j.Name
+			}
+		}
 		return nil
 	}
 	for i, j := range ss.Jump {

@@ -58,6 +58,10 @@ type tab struct {
 	waitCancel context.CancelFunc // stops waiting for the device
 	tun        *tabTunnels        // SSH port forwards
 	capture    *capture           // command output going to a file (capture.go)
+	// onward goes on from the jump host by a typed command (onward.go);
+	// pending is the automation that starts once the device is reached.
+	onward  *onwardWatch
+	pending *expect.Engine
 }
 
 // App is bound to the frontend.

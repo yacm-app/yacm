@@ -60,6 +60,7 @@ var patchFor = map[string][]Protocol{
 	"keepAlive":      {ProtoSSH},
 	"agentForward":   {ProtoSSH},
 	"tunnels":        {ProtoSSH},
+	"onward":         {ProtoSSH},
 	"serial":         {ProtoSerial},
 }
 

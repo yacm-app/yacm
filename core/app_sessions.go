@@ -280,8 +280,20 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	var c conn
 	summary := ""
 	timeout := time.Duration(ss.ConnectTimeout) * time.Second
+	t.mu.Lock()
+	t.onward, t.pending = nil, nil
+	t.mu.Unlock()
 	switch ss.Protocol {
-	case store.ProtoSSH:
+	case store.ProtoSSH, store.ProtoTelnet:
+		if eff.Onward == "" {
+			break
+		}
+		c, summary, err = a.dialOnward(ctx, t, node, eff, timeout)
+	}
+	switch {
+	case c != nil || err != nil:
+		// connected (or failed) through a command on the jump host
+	case ss.Protocol == store.ProtoSSH:
 		hops := a.jumpHops(t, node, eff)
 		if eff.Credential != "" {
 			a.tabLog(t, "login: credential profile %q", eff.Credential)
@@ -311,7 +323,7 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = sc, sc.Summary()
 		}
-	case store.ProtoTelnet:
+	case ss.Protocol == store.ProtoTelnet:
 		if len(eff.Hops) > 0 {
 			// Through SSH jump hosts: a forwarded TCP channel to the device.
 			hops := a.jumpHops(t, node, eff)
@@ -350,7 +362,7 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = tc, "telnet · no encryption"
 		}
-	case store.ProtoSerial:
+	case ss.Protocol == store.ProtoSerial:
 		s := *ss.Serial
 		a.tabLog(t, "opening %s at %d %d%s%s…", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
 		var pc *serialconn.Conn
@@ -358,7 +370,7 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		if err == nil {
 			c, summary = pc, fmt.Sprintf("serial %s · %d %d%s%s", s.Device, s.Baud, s.DataBits, strings.ToUpper(s.Parity[:1]), s.StopBits)
 		}
-	case store.ProtoLocal:
+	case ss.Protocol == store.ProtoLocal:
 		o := localOptions(ss)
 		a.tabLog(t, "starting %s…", localterm.Label(o))
 		var lc *localterm.Conn
@@ -407,9 +419,16 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 		eng := expect.New(rules, func(b []byte) error { t.touchInput(); _, err := c.Write(b); return err },
 			func(ev expect.Event) { a.emit("tab:expect", map[string]any{"tabId": t.id, "event": ev}) })
 		t.mu.Lock()
-		t.engine = eng
+		onward := t.onward != nil
+		if onward {
+			t.pending = eng // starts once the device is reached
+		} else {
+			t.engine = eng
+		}
 		t.mu.Unlock()
-		eng.Start()
+		if !onward {
+			eng.Start()
+		}
 	}
 	go a.watchSession(ctx, t)
 	if sc, ok := c.(*sshconn.Conn); ok {
@@ -417,10 +436,14 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	}
 
 	buf := make([]byte, 32*1024)
+	failMsg := ""
 	for {
 		n, rerr := c.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
+			if msg := a.feedOnward(t, c, chunk); msg != "" {
+				failMsg = msg
+			}
 			t.mu.Lock()
 			cp := t.capture
 			t.mu.Unlock()
@@ -458,7 +481,11 @@ func (a *App) run(ctx context.Context, t *tab, approveBefore bool) {
 	if ctx.Err() != nil {
 		msg = "disconnected"
 	}
-	a.setState(t, "closed", msg)
+	if failMsg != "" && ctx.Err() == nil {
+		a.setState(t, "error", failMsg)
+	} else {
+		a.setState(t, "closed", msg)
+	}
 	a.afterCommands(t)
 	if ctx.Err() == nil {
 		a.afterClose(t)

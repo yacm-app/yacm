@@ -1783,3 +1783,27 @@ test('a local session runs a shell or a container shell, and the tree opens a lo
   await expect(page.locator('.tab', { hasText: 'local shell' })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('a jump host that does not forward types a command, and its sessions say so', async ({ page }) => {
+  const nodes = [
+    { id: 'j', parentId: '', name: 'core-rtr', order: 0, session: { protocol: 'ssh', host: '10.0.0.1', port: 22, user: 'jsmith' } },
+    { id: 'd', parentId: '', name: 'old-sw', order: 1, session: { protocol: 'telnet', host: '10.9.9.9', port: 23, jumpVia: 'j' } },
+  ];
+  const errors = await open(page, { nodes });
+  await page.locator('#tree .row', { hasText: 'core-rtr' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  let dlg = page.getByRole('dialog', { name: 'Edit core-rtr' });
+  await dlg.getByRole('button', { name: 'Jump hosts' }).click();
+  await dlg.getByRole('radio', { name: 'Type a command' }).click();
+  await dlg.locator('.field', { hasText: 'For telnet sessions' }).locator('input').fill('telnet <HOST> /vrf MGMT');
+  await dlg.getByRole('button', { name: 'Save session' }).click();
+  const saved = (await calls(page, 'SaveNode')).at(-1).args[0].session;
+  expect(saved.onward).toEqual({ mode: 'command', ssh: '', telnet: 'telnet <HOST> /vrf MGMT' });
+  await page.locator('#tree .row', { hasText: 'old-sw' }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Edit' }).click();
+  dlg = page.getByRole('dialog', { name: 'Edit old-sw' });
+  await dlg.getByRole('button', { name: 'Jump hosts' }).click();
+  await expect(dlg).toContainText('core-rtr does not forward connections: YACM logs in to it and types “telnet <HOST> /vrf MGMT”');
+  await expect(dlg).not.toContainText('When other sessions use this one');
+  expect(errors).toEqual([]);
+});

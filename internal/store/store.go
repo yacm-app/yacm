@@ -479,6 +479,19 @@ func Validate(n *Node) error {
 	if ss.Protocol != ProtoSSH && ss.Protocol != ProtoTelnet {
 		ss.JumpVia, ss.Jump = "", nil
 	}
+	if ss.Protocol != ProtoSSH || (ss.Onward != nil && ss.Onward.Mode == "") {
+		ss.Onward = nil
+	}
+	if ss.Onward != nil {
+		if ss.Onward.Mode != "command" {
+			return fmt.Errorf("unknown way on from the jump host %q", ss.Onward.Mode)
+		}
+		for _, c := range []string{ss.Onward.SSH, ss.Onward.Telnet} {
+			if err := ValidOnwardCommand(c); err != nil {
+				return err
+			}
+		}
+	}
 	if ss.Protocol != ProtoLocal {
 		ss.Local = nil
 	} else {
