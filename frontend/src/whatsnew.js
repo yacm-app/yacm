@@ -21,6 +21,8 @@ export const WHATS_NEW = [
       ['Tabs', 'Tabs keep a readable width and long names are shortened in the middle (in the session list too); a second tab of a session is numbered, the mouse wheel scrolls the tab bar, new output marks a tab that is not on screen, and the tab menu can close all tabs.'],
       ['Session list', 'Ctrl + and Ctrl - in the session list make it larger or smaller; a middle click in the terminal can paste (Settings > Terminal).'],
       ['Team libraries', 'One session with a bad entry is left out (and named in Settings) instead of the whole library; automation can answer sudo\'s password prompt with your own login.'],
+      ['Files tab', 'A device that does not answer the request for a file channel no longer leaves the Files tab waiting: after 30 seconds YACM opens a new connection and tries again.'],
+      ['Session logs', 'The SNMP community in an ASA snmp-server host line is masked.'],
     ],
   },
   {
