@@ -28,6 +28,7 @@
   let favorites = cfg.favorites || [];
   let uploads = 0;
   const servers = {};
+  const localSorts = cfg.localSorts || {};
   let lowPortAllowed = 1024;
   const clusters = () => {
     const c = {};
@@ -81,6 +82,13 @@
       ids.forEach(id => copy(id, parentId, true));
       return tops;
     },
+    LocalFolderSorts: () => localSorts,
+    SetFolderSort: (id, sort) => {
+      const n = nodes.find(x => x.id === id);
+      if (!id || n?.library) { if (sort) localSorts[id] = sort; else delete localSorts[id]; } else if (n) { if (sort) n.sortBy = sort; else delete n.sortBy; }
+      return null;
+    },
+    SetChildOrder: (parentId, ids) => { ids.forEach((id, i) => { const n = nodes.find(x => x.id === id); if (n && (n.parentId || '') === parentId) n.order = i; }); return null; },
     SetExpanded: (id, open) => { const n = nodes.find(x => x.id === id); if (n) n.expanded = open; return null; },
     DeleteNode: id => { nodes = nodes.filter(n => n.id !== id && n.parentId !== id); return null; },
     BulkUpdate: req => req.ids.length,

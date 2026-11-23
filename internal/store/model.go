@@ -59,7 +59,10 @@ type Node struct {
 	Color    string         `json:"color,omitempty"`
 	Session  *Session       `json:"session,omitempty"`
 	Defaults *GroupDefaults `json:"defaults,omitempty"` // groups only
-	Updated  time.Time      `json:"updated"`
+	// SortBy keeps a group's contents sorted (groups only); nil = the order
+	// you arranged. Older versions keep it and show the stored order.
+	SortBy  *FolderSort `json:"sortBy,omitempty"`
+	Updated time.Time   `json:"updated"`
 	// Library is set (at run time only) on nodes that come from a team
 	// library; such nodes are read-only and never saved with your sessions.
 	Library string `json:"library,omitempty"`
@@ -67,6 +70,22 @@ type Node struct {
 	// Extra keeps members written by a newer YACM (see internal/jsonx).
 	Extra jsonx.Unknown `json:"-"`
 }
+
+// FolderSort is how a group (folder) keeps its contents sorted.
+type FolderSort struct {
+	// Key: "name", "name-desc", "address", "type", "recent" (opened last
+	// first), "count" (subfolders with the most sessions first) or "manual"
+	// (your own order, also when a parent sorts its subfolders).
+	Key string `json:"key"`
+	// Subfolders: subfolders without their own sort follow this one.
+	Subfolders bool `json:"subfolders,omitempty"`
+
+	// Extra keeps members written by a newer YACM (see internal/jsonx).
+	Extra jsonx.Unknown `json:"-"`
+}
+
+// SortKeys are the known FolderSort keys.
+var SortKeys = map[string]bool{"name": true, "name-desc": true, "address": true, "type": true, "recent": true, "count": true, "manual": true}
 
 // Inherit is the value of a session field that takes the setting from the
 // nearest group that defines it.

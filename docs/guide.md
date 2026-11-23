@@ -50,6 +50,15 @@ Hovering shows each label.
   type, and colours (red for production, green for the lab) shown on the tab,
   the terminal edge and in the tree. Ctrl/Shift+click selects several sessions
   to connect, edit, export or delete together.
+- **Sorted folders**: right click a folder (or the empty space below the
+  tree, for the top level) > *Sort by*: name (r2 before r10), address
+  (10.0.0.9 before 10.0.0.10), connection type, opened last, or the
+  subfolders with the most sessions first. The folder stays sorted: new and
+  renamed sessions take their place. *Also its subfolders* sorts the
+  subfolders the same way unless they have a sort of their own. Dragging
+  sessions into a different order asks to turn the sorting off, and the
+  order on screen becomes yours. Team library folders and the top level keep
+  their sorting on this computer only; a team library never carries it.
 - **Group defaults**: a group gives its sessions a credential profile, a jump
   host, an SSH algorithm profile, a colour and terminal colours. Sessions set
   to *From group* use them, also in subgroups, so moving a site behind a new

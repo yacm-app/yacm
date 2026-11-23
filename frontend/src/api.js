@@ -2,6 +2,7 @@
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
 // Thin wrapper around the Wails bindings (window.go.core.App) and runtime.
+import { applySorts } from './foldersort.js';
 
 function call(method, ...args) {
   const fn = window.go?.core?.App?.[method];
@@ -34,6 +35,10 @@ export const state = {
   teamLibs: [],
   teamSnippets: [],
   favorites: new Set(), // personal favourite session IDs (per computer)
+  /** @type {Record<string, {key: string, subfolders?: boolean}>} */
+  localSorts: {}, // sorting of the top level ("") and team library folders (per computer)
+  /** @type {string[]} */
+  recent: [], // session IDs opened last, newest first
   selected: null,
   selection: new Set(), // multi-select in the tree (always contains selected)
   vault: { exists: false, unlocked: false },
@@ -56,13 +61,19 @@ export async function reload() {
     if (!state.children.has(k)) state.children.set(k, []);
     state.children.get(k).push(n);
   }
+  // Your groups, then your sessions, then team libraries at the bottom.
+  const rank = n => (n.library && !n.parentId ? 2 : n.isGroup ? 0 : 1);
   for (const list of state.children.values()) {
-    // Your groups, then your sessions, then team libraries at the bottom.
-    const rank = n => (n.library && !n.parentId ? 2 : n.isGroup ? 0 : 1);
     list.sort((a, b) => rank(a) - rank(b) || a.order - b.order || a.name.localeCompare(b.name));
   }
+  const [favs, sorts, recent] = await Promise.all([
+    api.Favorites().catch(() => []), api.LocalFolderSorts().catch(() => ({})), api.RecentSessions().catch(() => []),
+  ]);
+  state.favorites = new Set(favs || []);
+  state.localSorts = sorts || {};
+  state.recent = recent || [];
+  applySorts(state, rank);
   document.documentElement.dataset.theme = state.settings.theme === 'light' ? 'light' : 'dark';
-  state.favorites = new Set((await api.Favorites().catch(() => [])) || []);
   return s;
 }
 

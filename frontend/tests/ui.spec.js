@@ -1656,3 +1656,39 @@ test('Type to many keeps the command field on its own full-width row, however ma
   await expect(bar.locator('.targets strong')).toHaveText('Typing goes to (1 of 30):');
   expect(errors).toEqual([]);
 });
+
+test('a folder keeps its sessions sorted, and arranging by hand asks first', async ({ page }) => {
+  const nodes = [
+    { id: 'g', parentId: '', name: 'Sites', isGroup: true, expanded: true, order: 0 },
+    { id: 'sub', parentId: 'g', name: 'Access', isGroup: true, expanded: true, order: 0 },
+    { id: 'a1', parentId: 'sub', name: 'sw10', order: 0, session: { protocol: 'ssh', host: '10.0.0.10', port: 22 } },
+    { id: 'a2', parentId: 'sub', name: 'sw2', order: 1, session: { protocol: 'ssh', host: '10.0.0.9', port: 22 } },
+    { id: 'r10', parentId: 'g', name: 'r10', order: 1, session: { protocol: 'telnet', host: 'r10.example.net', port: 23 } },
+    { id: 'r2', parentId: 'g', name: 'r2', order: 2, session: { protocol: 'ssh', host: '10.0.0.2', port: 22 } },
+    { id: 'r1', parentId: 'g', name: 'R1', order: 3, session: { protocol: 'ssh', host: '10.0.0.200', port: 22 } },
+  ];
+  const errors = await open(page, { nodes });
+  const names = () => page.locator('#tree .row .name').allInnerTexts();
+  expect(await names()).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'r10', 'r2', 'R1']);
+  const sortBy = async (folder, item) => {
+    await page.locator('#tree .row.group', { hasText: folder }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Sort by' }).hover();
+    await page.locator('.menu.submenu').getByRole('menuitem', { name: item }).click();
+  };
+  await sortBy('Sites', 'Name (A to Z)');
+  // Natural order, and only this folder.
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'R1', 'r2', 'r10']);
+  await sortBy('Sites', 'Address');
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw10', 'sw2', 'r2', 'R1', 'r10']);
+  await sortBy('Sites', 'Also its subfolders');
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw2', 'sw10', 'r2', 'R1', 'r10']);
+  expect((await calls(page, 'SetFolderSort')).at(-1).args).toEqual(['g', { key: 'address', subfolders: true }]);
+  // Dragging inside the sorted folder asks to turn sorting off.
+  await page.locator('#tree .row', { hasText: 'r10' }).dragTo(page.locator('#tree .row', { hasText: 'r2' }), { targetPosition: { x: 20, y: 2 } });
+  const dlg = page.locator('dialog, .dialog').filter({ hasText: 'keeps its contents sorted by address' }).first();
+  await expect(dlg).toBeVisible();
+  await dlg.getByRole('button', { name: 'Turn sorting off' }).click();
+  await expect.poll(names).toEqual(['Sites', 'Access', 'sw2', 'sw10', 'r10', 'r2', 'R1']);
+  expect((await calls(page, 'SetChildOrder'))[0].args).toEqual(['g', ['sub', 'r2', 'r1', 'r10']]);
+  expect(errors).toEqual([]);
+});

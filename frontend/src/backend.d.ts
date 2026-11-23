@@ -79,6 +79,7 @@ export interface Backend {
   ListSerialPorts(): Promise<any[]>;
   LocalAddresses(): Promise<any[]>;
   LocalExists(a1: string): Promise<boolean>;
+  LocalFolderSorts(): Promise<Record<string, any>>;
   LocalHome(): Promise<string>;
   LocalJoin(a1: string, a2: string): Promise<string>;
   LocalList(a1: string): Promise<any[]>;
@@ -123,8 +124,10 @@ export interface Backend {
   SessionAddresses(a1: string[]): Promise<string[]>;
   SessionCommandToFile(a1: string, a2: string, a3: string): Promise<string>;
   SessionsUnder(a1: string[]): Promise<string[]>;
+  SetChildOrder(a1: string, a2: string[]): Promise<void>;
   SetExpanded(a1: string, a2: boolean): Promise<void>;
   SetFavorite(a1: string, a2: boolean): Promise<string[]>;
+  SetFolderSort(a1: string, a2: any | null): Promise<void>;
   StopEditingTeamLibrary(a1: string, a2: boolean): Promise<void>;
   StopExpect(a1: string): Promise<void>;
   StopWaiting(a1: string): Promise<void>;

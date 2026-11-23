@@ -36,6 +36,15 @@ func (v GroupDefaults) MarshalJSON() ([]byte, error) {
 	return jsonx.Marshal(plain(v), v.Extra)
 }
 
+func (v *FolderSort) UnmarshalJSON(b []byte) error {
+	type plain FolderSort
+	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
+}
+func (v FolderSort) MarshalJSON() ([]byte, error) {
+	type plain FolderSort
+	return jsonx.Marshal(plain(v), v.Extra)
+}
+
 func (v *Credential) UnmarshalJSON(b []byte) error {
 	type plain Credential
 	return jsonx.Unmarshal(b, (*plain)(v), &v.Extra)
@@ -208,6 +217,9 @@ func DropUnknown(n *Node) {
 	n.Extra = nil
 	if n.Defaults != nil {
 		n.Defaults.Extra = nil
+	}
+	if n.SortBy != nil {
+		n.SortBy.Extra = nil
 	}
 	ss := n.Session
 	if ss == nil {

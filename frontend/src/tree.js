@@ -5,6 +5,7 @@ import { api, state, reload, colorOf, effectiveLogin, effectiveJump, teamLibOf, 
 import { h, contextMenu, confirmDialog, toast, errMsg, portGlyph, plural, IS_MAC, fitMiddle } from './ui.js';
 import { looksLikeAddress } from './switcher.js';
 import { showSidebar } from './activity.js';
+import { SORT_LABELS, ownSort, sortOf, inheritedSort } from './foldersort.js';
 
 // hooks: connect(id), connectMany(ids), edit(node), editMany(ids), newSession(pid), newGroup(pid),
 // connectGroup(id), connectCluster(name), exportNode(id), exportMany(ids), exportAll(), importHere()
@@ -168,6 +169,7 @@ export function initTree(h_) {
     contextMenu(e.clientX, e.clientY, [
       { label: 'New session', action: () => hooks.newSession('') },
       { label: 'New group', action: () => hooks.newGroup('') },
+      sortMenu(''),
       '-',
       { label: 'Import sessions…', action: () => hooks.importHere() },
       { label: 'Export all sessions…', action: () => hooks.exportAll(), disabled: !state.nodes.length },
@@ -301,6 +303,8 @@ function tooltip(n) {
     }
     if (d.credentialId) lines.push(`Login for sessions: ${d.credentialId.startsWith('slot:') ? 'team login' : state.credById.get(d.credentialId)?.name || 'missing profile'}`);
     if (d.jumpVia) lines.push(`Jump host for sessions: ${state.byId.get(d.jumpVia)?.name || 'missing session'}`);
+    const sorted = sortOf(state, n.id).sort;
+    if (sorted) lines.push(`Sorted by ${SORT_LABELS[sorted.key]?.toLowerCase() || sorted.key}`);
   } else {
     const s = n.session || {};
     if (isNewerType(n)) {
@@ -553,6 +557,7 @@ function bindRow(row, n) {
       '-',
       { label: 'New session here', action: () => hooks.newSession(n.id) },
       { label: 'New group here', action: () => hooks.newGroup(n.id) },
+      sortMenu(n.id),
       '-',
       { label: 'Edit group and defaults', key: 'F4', action: () => hooks.edit(n) },
       { label: 'Edit all sessions in it…', action: () => hooks.editMany([n.id]), disabled: !countSessions(n.id) },
@@ -603,9 +608,72 @@ function bindRow(row, n) {
     const into = row.classList.contains('drop-into');
     clearDrop();
     if (into) return moveMany(dragIds, n.id, -1);
-    const siblings = (state.children.get(n.parentId || '') || []).filter(s => !dragIds.includes(s.id));
-    moveMany(dragIds, n.parentId || '', siblings.findIndex(s => s.id === n.id));
+    const parentId = n.parentId || '';
+    const ids = dragIds;
+    if (!(await keepOwnOrder(parentId, ids))) return;
+    const siblings = (state.children.get(parentId) || []).filter(s => !ids.includes(s.id));
+    moveMany(ids, parentId, siblings.findIndex(s => s.id === n.id));
   });
+}
+
+// sortMenu is the "Sort by" submenu of a folder (id '' = top level).
+function sortMenu(id) {
+  const own = ownSort(state, id);
+  const parent = inheritedSort(state, id);
+  const cur = own && own.key !== 'manual' ? own.key : '';
+  const sub = !!own?.subfolders && !!cur;
+  const mark = (on, label) => (on ? `✓ ${label}` : label);
+  const set = async sort => {
+    try {
+      if (!sort || sort.key === 'manual') await freezeOrder(id);
+      await api.SetFolderSort(id, sort);
+      await reload(); render();
+    } catch (e) { toast(errMsg(e), 'error'); }
+  };
+  const fromName = parent ? (parent.from ? state.byId.get(parent.from)?.name : 'the top level') : '';
+  return {
+    label: 'Sort by', items: [
+      ...Object.entries(SORT_LABELS).map(([k, l]) => ({ label: mark(cur === k, l), action: () => set({ key: k, subfolders: sub }) })),
+      '-',
+      { label: mark(sub, 'Also its subfolders'), disabled: !cur, action: () => set({ key: cur, subfolders: !sub }), title: 'Subfolders without a sort of their own are sorted the same way' },
+      parent ? { label: mark(!own, `Like ${fromName} (${SORT_LABELS[parent.sort.key]?.toLowerCase()})`), action: () => set(null) } : null,
+      { label: mark(parent ? own?.key === 'manual' : !own, 'My own order'), action: () => set(parent ? { key: 'manual' } : null), title: 'The order you arrange by dragging' },
+    ],
+  };
+}
+
+// keepOwnOrder: arranging sessions by hand inside a sorted folder asks to
+// turn its sorting off first. Moving them in from elsewhere does not ask.
+async function keepOwnOrder(parentId, ids) {
+  const { sort, from } = sortOf(state, parentId);
+  if (!sort || !ids.every(id => (state.byId.get(id)?.parentId || '') === parentId)) return true;
+  const name = parentId ? state.byId.get(parentId)?.name : 'The top level';
+  const ok = await confirmDialog({
+    title: 'Sorted folder',
+    message: `${parentId ? `“${name}”` : name} keeps its contents sorted by ${SORT_LABELS[sort.key]?.toLowerCase()}. Turn the sorting off and keep the order you arrange?`,
+    ok: 'Turn sorting off',
+  });
+  if (!ok) return false;
+  try {
+    await freezeOrder(parentId);
+    await api.SetFolderSort(parentId, from === parentId && !inheritedSort(state, parentId) ? null : { key: 'manual' });
+  } catch (e) { toast(errMsg(e), 'error'); return false; }
+  return true;
+}
+
+// freezeOrder keeps the sorted order on screen as your own order, when a
+// folder of yours stops being sorted.
+// Subfolders that took the sort from it keep their order too.
+async function freezeOrder(id) {
+  const { sort, from } = sortOf(state, id);
+  if (!sort || (id && state.byId.get(id)?.library)) return;
+  const walk = async fid => {
+    const kids = state.children.get(fid) || [];
+    const ids = kids.filter(n => !n.library).map(n => n.id);
+    if (ids.length) await api.SetChildOrder(fid, ids);
+    for (const g of kids) if (g.isGroup && !g.library && !ownSort(state, g.id) && sortOf(state, g.id).from === from) await walk(g.id);
+  };
+  await walk(id);
 }
 
 // libraryMenu: team library nodes can be used and copied, not changed.
@@ -620,6 +688,7 @@ function libraryMenu(n) {
     n.isGroup ? null : { label: 'Copy address', action: () => copyAddresses([n.id]) },
     '-',
     { label: 'Copy to my sessions', action: () => hooks.copyToMine([n.id]), title: 'An editable copy in your own sessions' },
+    n.isGroup ? sortMenu(n.id) : null,
     ...(root ? [] : clipItems([n.id], n, { library: true })),
     root ? { label: 'Edit this library…', action: () => hooks.editLibrary(n.library), disabled: !lib || lib.stale || !!lib.needsNewer, title: lib?.needsNewer ? `Update YACM to edit it: ${lib.needsNewer}` : undefined } : null,
     { label: 'Team library settings…', action: () => hooks.teamSettings() },

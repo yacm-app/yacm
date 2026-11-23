@@ -615,6 +615,7 @@ func (s *Store) Upsert(n *Node) (*Node, error) {
 			return nil, errors.New("cannot change a group into a session")
 		}
 		keepUnknownNode(c, old)
+		c.SortBy = old.SortBy // changed only through SetSortBy
 		if c.ParentID != old.ParentID {
 			if s.isAncestor(c.ID, c.ParentID) {
 				return nil, errors.New("cannot move a group into itself")
@@ -730,6 +731,63 @@ func collapseImported(insert []*Node) map[string]bool {
 }
 
 // SetExpanded remembers whether a group is open in the tree.
+// SetChildOrder stores ids (children of parentID) in this order, ahead of
+// any child not listed. Used when a sorted folder goes back to your own
+// order: what you saw becomes your order.
+func (s *Store) SetChildOrder(parentID string, ids []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.readOnly {
+		return ErrReadOnly
+	}
+	pos := map[string]int{}
+	for i, id := range ids {
+		if n, ok := s.nodes[id]; ok && n.ParentID == parentID {
+			pos[id] = i
+		}
+	}
+	if len(pos) == 0 {
+		return nil
+	}
+	rest := []*Node{}
+	for _, n := range s.nodes {
+		if n.ParentID != parentID {
+			continue
+		}
+		if i, ok := pos[n.ID]; ok {
+			n.Order = i
+		} else {
+			rest = append(rest, n)
+		}
+	}
+	sort.SliceStable(rest, func(i, j int) bool { return rest[i].Order < rest[j].Order })
+	for i, n := range rest {
+		n.Order = len(ids) + i
+	}
+	return s.saveLocked()
+}
+
+// SetSortBy keeps a group's contents sorted (nil: your own order again).
+func (s *Store) SetSortBy(id string, sort *FolderSort) error {
+	if sort != nil && !SortKeys[sort.Key] {
+		return fmt.Errorf("unknown sort order %q", sort.Key)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.readOnly {
+		return ErrReadOnly
+	}
+	n, ok := s.nodes[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !n.IsGroup {
+		return errors.New("only folders can be sorted")
+	}
+	n.SortBy = sort
+	return s.saveLocked()
+}
+
 func (s *Store) SetExpanded(id string, open bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

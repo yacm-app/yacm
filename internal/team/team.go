@@ -470,6 +470,7 @@ func Build(in BuildInput) (*File, []string) {
 		var n store.Node
 		_ = json.Unmarshal(data, &n)
 		n.Library, n.Expanded = "", n.IsGroup && n.Expanded
+		n.SortBy = nil // how a folder is sorted stays with each person
 		if n.ParentID == in.Root.ID {
 			n.ParentID = ""
 		}
