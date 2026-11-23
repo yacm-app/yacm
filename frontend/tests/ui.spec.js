@@ -879,9 +879,10 @@ test('one field finds sessions and connects: exact match, only match, address, o
   await expect(page.locator('#tree .row.selected')).toContainText('site99-sw');
   await page.keyboard.press('Enter');
   expect((await calls(page, 'Connect')).at(-1).args[0].nodeId).toBe('s99');
-  // Escape clears the filter.
+  // Escape clears the filter (once the new tab has taken the keyboard).
+  await expect(page.locator('.term:not([hidden]) .xterm-helper-textarea')).toBeFocused();
   await search.fill('site9');
-  await page.keyboard.press('Escape');
+  await search.press('Escape');
   await expect(search).toHaveValue('');
   await expect(hint).toBeHidden();
   expect(errors).toEqual([]);
