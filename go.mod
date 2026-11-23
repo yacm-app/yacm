@@ -12,8 +12,8 @@ require (
 	github.com/tobischo/gokeepasslib/v3 v3.7.1
 	github.com/wailsapp/wails/v2 v2.17.1
 	go.bug.st/serial v1.8.0
-	golang.org/x/crypto v0.58.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/crypto v0.59.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
@@ -49,8 +49,12 @@ require (
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/term v0.47.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/term v0.48.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
 
 replace git.sr.ht/~jackmordaunt/go-toast/v2 => ./third_party/go-toast-stub
+
+// golang.org/x/crypto with DSA kept (upstream removed it in v0.59.0): very
+// old devices have only a DSA host key. See github.com/yacm-app/crypto.
+replace golang.org/x/crypto => github.com/yacm-app/crypto v0.59.1-0.20261123211413-0db22e327be4
