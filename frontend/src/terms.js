@@ -1626,7 +1626,11 @@ function renderBroadcast() {
   const box = document.getElementById('broadcast');
   box.hidden = !broadcast.on;
   if (!broadcast.on) return;
-  box.replaceChildren(h('strong', { text: 'Typing goes to:' }));
+  // Two rows: the sessions (they wrap, and scroll when there are many), then
+  // the command field across the whole width, however many sessions there are.
+  const head = h('strong', { text: 'Typing goes to:' });
+  const targets = h('div', { class: 'targets' }, head);
+  box.replaceChildren(targets);
   // "All" checks or clears every open tab. Tabs opened later never join by
   // themselves: "All" then shows as partly checked, so a command never goes
   // to a device the user has not seen ticked.
@@ -1636,6 +1640,8 @@ function renderBroadcast() {
     const n = terms.filter(id => broadcast.ids.has(id)).length;
     all.checked = n > 0 && n === terms.length;
     all.indeterminate = n > 0 && n < terms.length;
+    // The count, since with many sessions some are scrolled out of sight.
+    head.textContent = `Typing goes to (${n} of ${terms.length}):`;
   };
   // After a click on a check box the keys go back to the terminal: a space
   // would otherwise tick or clear the box instead of reaching the devices.
@@ -1646,12 +1652,12 @@ function renderBroadcast() {
     renderTabbar();
     back();
   });
-  box.append(h('label', { class: 'all', title: 'Check or clear every open session' }, all, 'All'));
+  targets.append(h('label', { class: 'all', title: 'Check or clear every open session' }, all, 'All'));
   for (const id of terms) {
     const t = tabs.get(id);
     const cb = h('input', { type: 'checkbox', checked: broadcast.ids.has(id) });
     cb.addEventListener('change', () => { cb.checked ? broadcast.ids.add(id) : broadcast.ids.delete(id); syncAll(); renderTabbar(); back(); });
-    box.append(h('label', { title: t.state === 'connected' ? tabName(t) : `${tabName(t)} (${t.state}): receives nothing until it is connected` }, cb, tabName(t)));
+    targets.append(h('label', { title: t.state === 'connected' ? tabName(t) : `${tabName(t)} (${t.state}): receives nothing until it is connected` }, cb, tabName(t)));
   }
   syncAll();
   const line = h('input', { class: 'inline-input', placeholder: 'Send one command to the checked sessions', spellcheck: false,
@@ -1671,7 +1677,7 @@ function renderBroadcast() {
     if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); send(' '); }
     else if (e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); send('\x03'); }
   });
-  box.append(line, h('button', { class: 'btn small', text: 'Done', on: { click: toggleBroadcast } }));
+  box.append(h('div', { class: 'send' }, line, h('button', { class: 'btn small', text: 'Done', on: { click: toggleBroadcast } })));
 }
 
 // ---------- keyboard ----------

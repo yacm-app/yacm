@@ -257,7 +257,7 @@ test('Type to many has an All box that follows the session boxes', async ({ page
   await connectTabs(page, ['core-sw1', 'core-sw2']);
   await page.getByRole('button', { name: 'Type to many' }).click();
   const bar = page.locator('#broadcast');
-  await expect(bar).toContainText('Typing goes to:');
+  await expect(bar).toContainText('Typing goes to (2 of 2):');
   const all = bar.getByLabel('All sessions');
   const boxes = bar.locator('label:not(.all) input');
   await expect(boxes).toHaveCount(2);
@@ -1614,5 +1614,28 @@ test('the tab menu closes all tabs, asking once while sessions are connected', a
   await page.getByRole('dialog', { name: 'Close 2 tabs?' }).getByRole('button', { name: 'Close' }).click();
   await expect(page.locator('#tabbar .tab')).toHaveCount(0);
   expect((await calls(page, 'CloseTab')).length).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test('Type to many keeps the command field on its own full-width row, however many sessions', async ({ page }) => {
+  const errors = await open(page);
+  await page.setViewportSize({ width: 1200, height: 700 });
+  const search = page.locator('#search');
+  for (let i = 1; i <= 30; i++) {
+    await search.fill(`admin@192.0.2.${i}`);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.tab')).toHaveCount(i);
+  }
+  await page.getByRole('button', { name: 'Type to many' }).click();
+  const bar = page.locator('#broadcast');
+  await expect(bar.locator('label:not(.all)')).toHaveCount(30);
+  const field = bar.locator('.inline-input');
+  const fb = await field.boundingBox(), bb = await bar.boundingBox(), tb = await bar.locator('.targets').boundingBox();
+  // Below every session, and most of the bar wide.
+  expect(fb.y).toBeGreaterThanOrEqual(tb.y + tb.height - 1);
+  expect(fb.width).toBeGreaterThan(bb.width * 0.7);
+  // Many sessions scroll instead of pushing the terminal away.
+  expect(tb.height).toBeLessThan(120);
+  await expect(bar.locator('.targets strong')).toHaveText('Typing goes to (1 of 30):');
   expect(errors).toEqual([]);
 });
