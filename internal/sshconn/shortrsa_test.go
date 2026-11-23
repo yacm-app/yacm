@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -33,7 +34,8 @@ func TestShortRSAHostKeyNeedsLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.Setenv("GODEBUG", "") // Go's default again: keys under 1024 bits refused
+	os.Setenv("GODEBUG", "")   // Go's default again: keys under 1024 bits refused
+	shortRSAOnce = sync.Once{} // an earlier Legacy test may have switched it on already
 	pub, err := ssh.NewPublicKey(&k.PublicKey)
 	if err != nil {
 		t.Fatal(err)
