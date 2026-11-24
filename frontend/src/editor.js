@@ -257,7 +257,7 @@ const LIST_MODES = [['add', 'Add to each'], ['replace', 'Replace in each'], ['re
 
 // Settings by section, with the names shown when they differ.
 const MULTI_SECTIONS = {
-  Connection: { protocol: 'Protocol', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', ipmi: 'IPMI cipher suite', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
+  Connection: { protocol: 'Connection type', 'node.parentId': 'Group', clusters: 'Tags', port: 'Port', serial: 'Serial line settings', ipmi: 'IPMI cipher suite', connectTimeout: 'Connect timeout', keepAlive: 'SSH keepalive', antiIdle: 'Anti-idle', antiIdleText: 'Anti-idle text' },
   Authentication: { credentialId: 'Login', user: 'User name', auth: 'Method', keyPath: 'Key file', certPath: 'Certificate', algorithms: 'Algorithms', agentForward: 'Agent forwarding' },
   'Jump hosts': { jumpVia: 'Jump host', jump: 'Jump hosts', onward: 'As a jump host' },
   'Tunnels and proxy': { tunnels: 'Tunnels', proxy: 'Outbound proxy' },
@@ -464,16 +464,21 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     const parent = groupSelect(n.parentId); parent.addEventListener('change', () => (n.parentId = parent.value));
     const net = multi ? multi.nodes.filter(x => x.session.protocol === 'ssh' || x.session.protocol === 'telnet') : [];
     const serials = multi ? multi.nodes.length - net.length : 0;
-    const proto = multi && !net.length ? h('div', { class: 'hint', text: [...protocols].map(p => protoLabel[p] || p).join(', ') }) : seg([
-      { value: 'ssh', label: 'SSH', icon: portGlyph('ssh') },
-      { value: 'telnet', label: 'Telnet', icon: portGlyph('telnet') },
-      ...(multi ? [] : [{ value: 'serial', label: 'Serial', icon: portGlyph('serial') }, { value: 'ipmi', label: 'IPMI SOL', icon: portGlyph('ipmi') }, { value: 'local', label: 'Local', icon: portGlyph('local') }]),
-    ], s.protocol, v => {
-      const defPort = { ssh: 22, telnet: 23, ipmi: 623 };
-      // With many sessions each one's default port follows (see PatchSessions).
-      if (!multi && (!s.port || s.port === defPort[s.protocol])) s.port = defPort[v] || 0;
-      s.protocol = v; refreshNav(); show(0);
-    });
+    // A list, not buttons: more connection types are coming.
+    const types = [['ssh', 'SSH'], ['telnet', 'Telnet'], ...(multi ? [] : [['serial', 'Serial'], ['local', 'Local'], ['ipmi', 'IPMI SOL']])];
+    const proto = multi && !net.length ? h('div', { class: 'hint', text: [...protocols].map(p => protoLabel[p] || p).join(', ') }) : h('select', {
+      class: 'proto-select', 'aria-label': 'Connection type',
+      on: {
+        change: e => {
+          const v = e.target.value;
+          const defPort = { ssh: 22, telnet: 23, ipmi: 623 };
+          // With many sessions each one's default port follows (see PatchSessions).
+          if (!multi && (!s.port || s.port === defPort[s.protocol])) s.port = defPort[v] || 0;
+          s.protocol = v; refreshNav(); show(0);
+        },
+      },
+    }, ...types.map(([v, label]) => h('option', { value: v, text: label })));
+    if (proto.tagName === 'SELECT') proto.value = types.some(([v]) => v === s.protocol) ? s.protocol : 'ssh';
     const known = Object.keys(state.clusters).sort((a, b) => a.localeCompare(b));
     const tags = h('input', { type: 'text', value: s.clusters.join(', '), spellcheck: false, list: 'tag-names', placeholder: 'CORE, EDGE', on: { input: e => (s.clusters = e.target.value.split(',').map(x => x.trim()).filter(Boolean)) } });
     const tagsMode = listModeCtl('clusters', 'tags');
@@ -488,7 +493,7 @@ export async function editSession(node, parentId = '', startSection = '', multi 
     } else if (multi && serials && net.length) {
       protoNote = h('div', { class: 'inherit-note', text: `${plural(serials, 'serial or local session keeps', 'serial and local sessions keep')} its connection type.` });
     }
-    const out = [h('h3', { text: 'Connection' }), field('Name', name), h('div', { class: 'grid2' }, field('Group', parent), h('div', { class: 'field' }, h('span', { text: 'Protocol' }), proto, protoNote)), field('Description', desc),
+    const out = [h('h3', { text: 'Connection' }), field('Name', name), h('div', { class: 'grid2' }, field('Group', parent), h('div', { class: 'field' }, h('span', { text: 'Connection type' }), proto, protoNote)), field('Description', desc),
       field('Tags (comma separated)', tags, `Labels across folders, for example CORE in every site. A tag opens all its sessions at once and pre-selects them for Type to many.${known.length ? ` Existing: ${known.join(', ')}` : ''}`),
       tagsMode,
       h('datalist', { id: 'tag-names' }, ...known.map(k => h('option', { value: k })))];

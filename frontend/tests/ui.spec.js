@@ -1457,13 +1457,13 @@ test('editing sessions together switches telnet to SSH and offers to drop the te
   await page.getByText(/Edit 3 sessions together/).click();
   const dlg = page.locator('.dialog').filter({ hasText: 'Edit 3 sessions together' });
   await expect(dlg.locator('.field', { hasText: 'Host' }).locator('input')).toBeDisabled();
-  await dlg.getByRole('radio', { name: 'SSH' }).click();
+  await dlg.getByLabel('Connection type').selectOption('ssh');
   await expect(dlg).toContainText('2 sessions change to SSH');
   await expect(dlg).toContainText('1 serial or local session stays');
   await expect(dlg).toContainText('from 1 session');
   await dlg.getByRole('button', { name: 'Save sessions' }).click();
   const sum = page.getByRole('dialog', { name: 'Change 1 setting in 3 sessions?' });
-  await expect(sum).toContainText('Protocol');
+  await expect(sum).toContainText('Connection type');
   await sum.getByRole('button', { name: 'Change them' }).click();
   const req = (await calls(page, 'PatchSessions')).at(-1).args[0];
   expect(req.patch.set).toEqual(['protocol']);
@@ -1769,7 +1769,7 @@ test('a local session runs a shell or a container shell, and the tree opens a lo
   await page.getByRole('menuitem', { name: 'New session' }).click();
   const dlg = page.getByRole('dialog', { name: 'New session' });
   await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('netbox shell');
-  await dlg.getByRole('radio', { name: 'Local' }).click();
+  await dlg.getByLabel('Connection type').selectOption('local');
   await expect(dlg.getByRole('button', { name: 'Authentication' })).toBeDisabled();
   await dlg.getByRole('radio', { name: 'Docker container' }).click();
   await dlg.locator('label.field', { hasText: 'Container (name or ID)' }).locator('input').fill('netbox');
@@ -1794,7 +1794,7 @@ test('an IPMI session opens the server console through the BMC', async ({ page }
   await page.getByRole('menuitem', { name: 'New session' }).click();
   const dlg = page.getByRole('dialog', { name: 'New session' });
   await dlg.locator('.field', { hasText: 'Name' }).first().locator('input').fill('esx01 console');
-  await dlg.getByRole('radio', { name: 'IPMI SOL' }).click();
+  await dlg.getByLabel('Connection type').selectOption('ipmi');
   await expect(dlg.getByRole('button', { name: 'Jump hosts' })).toBeDisabled();
   await expect(dlg.getByRole('button', { name: 'Tunnels and proxy' })).toBeDisabled();
   await dlg.locator('label.field', { hasText: 'Host' }).locator('input').fill('10.1.1.20');
