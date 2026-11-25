@@ -35,6 +35,9 @@ dependencies must be permissively licensed (`tools/licensecheck`).
   shares this history; fixes land here first and are merged there, and the
   features come here with the version that brings them. Commits there follow
   the same rules, since they become public.
+- Changes reach `main` through pull requests: a branch, CI and CodeQL green,
+  then merge (squash). No direct pushes to `main`. The maintainer approves
+  Dependabot pull requests before they are merged.
 - The maintainer's own instructions for AI assistants are kept outside this
   repository.
 
@@ -152,7 +155,7 @@ Linux desktop builds need `-tags desktop,production,webkit2_41` and
 Bump the version in `core/version.go` (and `wails.json`), run
 `go run ./tools/winres` (it takes the numbers from `core/version.go` for the
 Windows resources; the macOS build does the same), update the README and the
-version line on the website (`docs/index.html`), and push to `main`. What's new (`frontend/src/whatsnew.js`): every version from 0.9.1 on adds
+version line on the website (`docs/index.html`), and merge it into `main` (pull request). What's new (`frontend/src/whatsnew.js`): every version from 0.9.1 on adds
 its entry there; it is shown after the update and becomes the release notes. Release
 candidates are `0.9.0-rc.1`, `-rc.2` …: a pre-release for testers; the
 final version drops the suffix. Releases are made from the browser: Actions > Release >
