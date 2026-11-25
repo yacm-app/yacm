@@ -35,6 +35,9 @@ dependencies must be permissively licensed (`tools/licensecheck`).
   shares this history; fixes land here first and are merged there, and the
   features come here with the version that brings them. Commits there follow
   the same rules, since they become public.
+- Changes reach `main` through pull requests: a branch, CI and CodeQL green,
+  then merge (squash). No direct pushes to `main`. The maintainer approves
+  Dependabot pull requests before they are merged.
 - The maintainer's own instructions for AI assistants are kept outside this
   repository.
 
