@@ -44,7 +44,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.x'
-          cache-dependency-path: go.sum
+          # No build cache: CodeQL only sees packages that are compiled.
+          cache: false
 
       - if: matrix.language == 'go'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
