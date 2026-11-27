@@ -501,6 +501,11 @@ delete the folder (and a data folder you chose yourself, if any).
   the application list show the YACM icon; it follows the program when you
   move it, and an entry you wrote is left alone. Once the .deb or .rpm
   package is installed, the package's entry is used and YACM removes its own.
+- On Linux with the NVIDIA driver, YACM turns off WebKit's DMA-BUF renderer,
+  which leaves the window blank there (`WEBKIT_DISABLE_DMABUF_RENDERER=0`
+  keeps it). If the window is still blank or flickers, for example in a
+  virtual machine, start YACM with `WEBKIT_DISABLE_DMABUF_RENDERER=1` or
+  `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
 
 ## Security model
 

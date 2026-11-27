@@ -55,6 +55,7 @@ func Main(cfg Config) int {
 		applog.Infof("installed from the Microsoft Store (%s)", p)
 	}
 	desktopEntry(cfg.Icon) // Linux: menu entry and dock icon
+	webkitWorkarounds()    // Linux: blank window with the NVIDIA driver
 	app, err := newAppFor(loc, hasArg(args, "--take-over"))
 	if err != nil {
 		applog.Errorf("start: %v", err)
