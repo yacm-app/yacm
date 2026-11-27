@@ -57,4 +57,4 @@ replace git.sr.ht/~jackmordaunt/go-toast/v2 => ./third_party/go-toast-stub
 
 // golang.org/x/crypto with DSA kept (upstream removed it in v0.59.0): very
 // old devices have only a DSA host key. See github.com/yacm-app/crypto.
-replace golang.org/x/crypto => github.com/yacm-app/crypto v0.59.1-0.20261123211413-0db22e327be4
+replace golang.org/x/crypto => github.com/yacm-app/crypto v0.59.0-yacm.1
