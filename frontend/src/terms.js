@@ -385,11 +385,10 @@ class Tab {
     const multi = lines.filter(l => l.trim() !== '').length;
     const delay = this.pasteDelay();
     if (multi > 1) {
-      const targets = broadcast.on && broadcast.ids.has(this.id) ? broadcast.ids.size : 1;
       const ok = await confirmDialog({
         title: `Paste ${multi} lines?`,
         message: h('div', {},
-          h('p', { text: (targets > 1 ? `Each line will run on ${targets} sessions.` : `Each line will run on ${tabName(this)}.`) + (delay ? ` Lines are sent ${delay} ms apart.` : '') }),
+          h('p', { text: `Each line will run on ${tabName(this)}.` + (delay ? ` Lines are sent ${delay} ms apart.` : '') }),
           h('pre', { class: 'hostkey', style: { maxHeight: '220px', overflow: 'auto', whiteSpace: 'pre-wrap' }, text: lines.slice(0, 40).join('\n') + (lines.length > 40 ? `\n… ${lines.length - 40} more` : '') })),
         ok: 'Paste',
       });
@@ -425,18 +424,15 @@ class Tab {
     }
   }
 
+  // input sends what is typed or pasted in this terminal to this session only,
+  // also while Type to many is on: only its command field sends to many.
   input(d) {
     if (this.state !== 'connected') {
       if ((this.state === 'closed' || this.state === 'error') && d === '\r') reconnect(this.id);
       return;
     }
-    if (broadcast.on && broadcast.ids.has(this.id)) {
-      noteInput([...broadcast.ids]);
-      api.Broadcast([...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected'), d);
-    } else {
-      this.lastInput = Date.now();
-      api.Write(this.id, d).catch(() => {});
-    }
+    this.lastInput = Date.now();
+    api.Write(this.id, d).catch(() => {});
   }
 
   log(text) {
@@ -1258,14 +1254,11 @@ export function applySettings() {
   renderTabbar();
 }
 
-// commandTargets is used by the command library.
+// commandTargets is used by the command library: a saved command goes to the
+// active session only, also while Type to many is on.
 export function commandTargets() {
   const t = tabs.get(active);
   if (!isTerm(t) || t.state !== 'connected') return { ids: [], label: '' };
-  if (broadcast.on && broadcast.ids.has(t.id)) {
-    const ids = [...broadcast.ids].filter(id => tabs.get(id)?.state === 'connected');
-    return { ids, label: plural(ids.length, 'session', 'sessions'), macros: t.node.session?.macros || [], library: !!t.node.library };
-  }
   return { ids: [t.id], label: tabName(t), macros: t.node.session?.macros || [], nodeId: t.node.id, library: !!t.node.library };
 }
 
@@ -1624,16 +1617,24 @@ export function toggleBroadcast() {
   renderBroadcast();
   renderTabbar();
   renderStatus();
-  tabs.get(active)?.focus();
+  // On: the keys go to the command field, the only thing that sends to many.
+  if (broadcast.on) broadcastField()?.focus(); else tabs.get(active)?.focus();
 }
+
+/** @returns {HTMLInputElement | null} */
+function broadcastField() { return document.querySelector('#broadcast .inline-input'); }
 
 function renderBroadcast() {
   const box = document.getElementById('broadcast');
   box.hidden = !broadcast.on;
   if (!broadcast.on) return;
+  // A command half typed in the field, and the focus, survive the redraw
+  // (a tab opened or closed meanwhile).
+  const old = broadcastField();
+  const kept = old ? { value: old.value, focus: document.activeElement === old, start: old.selectionStart, end: old.selectionEnd } : null;
   // Two rows: the sessions (they wrap, and scroll when there are many), then
   // the command field across the whole width, however many sessions there are.
-  const head = h('strong', { text: 'Typing goes to:' });
+  const head = h('strong', { text: 'Commands go to:' });
   const targets = h('div', { class: 'targets' }, head);
   box.replaceChildren(targets);
   // "All" checks or clears every open tab. Tabs opened later never join by
@@ -1646,11 +1647,11 @@ function renderBroadcast() {
     all.checked = n > 0 && n === terms.length;
     all.indeterminate = n > 0 && n < terms.length;
     // The count, since with many sessions some are scrolled out of sight.
-    head.textContent = `Typing goes to (${n} of ${terms.length}):`;
+    head.textContent = `Commands go to (${n} of ${terms.length}):`;
   };
-  // After a click on a check box the keys go back to the terminal: a space
+  // After a click on a check box the keys go to the command field: a space
   // would otherwise tick or clear the box instead of reaching the devices.
-  const back = () => tabs.get(active)?.focus();
+  const back = () => broadcastField()?.focus();
   all.addEventListener('change', () => {
     if (all.checked) terms.forEach(id => broadcast.ids.add(id)); else broadcast.ids.clear();
     renderBroadcast();
@@ -1683,6 +1684,10 @@ function renderBroadcast() {
     else if (e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'c') { e.preventDefault(); send('\x03'); }
   });
   box.append(h('div', { class: 'send' }, line, h('button', { class: 'btn small', text: 'Done', on: { click: toggleBroadcast } })));
+  if (kept) {
+    line.value = kept.value;
+    if (kept.focus) { line.focus(); line.setSelectionRange(kept.start, kept.end); }
+  }
 }
 
 // ---------- keyboard ----------
