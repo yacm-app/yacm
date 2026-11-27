@@ -36,7 +36,7 @@ func writeKDBX(t *testing.T, password string) (string, gokeepasslib.UUID) {
 	root := gokeepasslib.NewGroup()
 	root.Name = "Network"
 	root.Groups = append(root.Groups, core, lab)
-	db := gokeepasslib.NewDatabase(gokeepasslib.WithDatabaseKDBXVersion4())
+	db := gokeepasslib.NewDatabase(gokeepasslib.WithDatabaseKDBXVersion40())
 	db.Content.Root = &gokeepasslib.RootData{Groups: []gokeepasslib.Group{root}}
 	db.Credentials = gokeepasslib.NewPasswordCredentials(password)
 	if err := db.LockProtectedEntries(); err != nil {

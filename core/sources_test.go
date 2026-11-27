@@ -23,7 +23,7 @@ func testKDBX(t *testing.T) string {
 	g := gokeepasslib.NewGroup()
 	g.Name = "Network"
 	g.Entries = append(g.Entries, e)
-	db := gokeepasslib.NewDatabase(gokeepasslib.WithDatabaseKDBXVersion4())
+	db := gokeepasslib.NewDatabase(gokeepasslib.WithDatabaseKDBXVersion40())
 	db.Content.Root = &gokeepasslib.RootData{Groups: []gokeepasslib.Group{g}}
 	db.Credentials = gokeepasslib.NewPasswordCredentials("kp-master")
 	db.LockProtectedEntries()
