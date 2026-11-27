@@ -85,7 +85,9 @@ Get the latest version from [Releases](https://github.com/yacm-app/yacm/releases
   Both packages add the YACM package repository (pkg.yacm.app, signed), so
   `apt upgrade` or `dnf upgrade` bring new versions. On other distributions,
   unpack `yacm-*-linux-amd64.tar.gz` and start `./yacm`; it needs WebKitGTK
-  4.1 and adds itself to the application menu.
+  4.1 and adds itself to the application menu. Moving from the tar.gz to a
+  package: start `yacm` once from a terminal (it removes the old menu entry),
+  or delete `~/.local/share/applications/yacm.desktop`.
 
 Every release has SHA-256 checksums, a software bill of materials and a
 build provenance attestation for each file
