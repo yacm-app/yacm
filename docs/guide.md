@@ -320,14 +320,16 @@ Hovering shows each label.
   text > *Highlight this*) colours up to five words or `/regular
   expressions/` in one session; *Keep as a highlighting rule* makes one
   permanent.
-- **Type to many**: what you type goes to the open sessions you tick (an
-  *All* box ticks them all; a session opened later never joins by itself),
-  plus a one-line "send to the checked sessions" box.
+- **Type to many**: a command field sends each command to the open sessions
+  you tick (an *All* box ticks them all; a session opened later never joins
+  by itself). While the field is empty, Space, Enter and Ctrl+C go to the
+  sessions too, so `--More--` pages on. What you type or paste in a terminal
+  still goes to that session only.
 - **Saved commands** (*Commands…* in the status bar, Ctrl+Shift+Space, or
   right click > *Send saved command*; the *Saved commands* icon edits the
   library): commands with `{placeholders}` asked for before sending, for
   example `show running-config interface {interface}`, sent to the active
-  session or to every session in Type to many. A session's own commands come
+  session (also while Type to many is on). A session's own commands come
   first. Select text > *Save as command* keeps it.
 - **Split view**: two sessions side by side, stacked, or four in a grid. Drag
   a tab or pane title onto another pane to move or swap sessions, or use the

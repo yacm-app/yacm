@@ -17,7 +17,7 @@ export const WHATS_NEW = [
       ['IPMI Serial-over-LAN', 'A server\'s serial console through its BMC (iDRAC, iLO, any IPMI 2.0 BMC), without the vendor\'s web page or Java.'],
       ['Passwords from KeePass or Bitwarden', 'A credential profile can read its password from a KeePass database or a Bitwarden vault when you connect, instead of keeping a copy.'],
       ['Session editor', 'The user name is under Authentication, next to the password and the credential profile.'],
-      ['Type to many', 'The command field has a row of its own and the sessions wrap above it, so it stays usable with many sessions; the label counts the checked ones (5 of 30).'],
+      ['Type to many', 'Only the command field sends to the checked sessions: what you type or paste in a terminal, and saved commands, go to that one session. The field has a row of its own and the sessions wrap above it, so it stays usable with many sessions; the label counts the checked ones (5 of 30).'],
     ],
   },
   {

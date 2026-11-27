@@ -2,7 +2,7 @@
 // Copyright (C) 2026 The YACM Authors. Additional terms under GPLv3 section 7: see NOTICE.md.
 
 // Command library: saved commands with {placeholders}, sent to the active
-// session or to every session in "Type to many".
+// session (also while Type to many is on).
 import { api, state, saveSettings } from './api.js';
 import { h, openDialog, field, check, toast, errMsg, plural, uuid, KEY } from './ui.js';
 import { commandTargets, pasteDelayFor, noteInput } from './terms.js';
@@ -142,7 +142,7 @@ export function openPalette() {
     title: 'Send a command',
     medium: true,
     body: h('div', { class: 'palette' }, search, list,
-      h('span', { class: 'target', text: targets.ids.length > 1 ? `Sends to ${plural(targets.ids.length, 'session', 'sessions')} (Type to many is on).` : `Sends to ${targets.label}. {name} parts are asked for first; <HOST>, <USER> and <NAME> are filled in per session.` })),
+      h('span', { class: 'target', text: `Sends to ${targets.label}. {name} parts are asked for first; <HOST>, <USER> and <NAME> are filled in per session.` })),
     left: h('div', { style: { display: 'flex', gap: '8px' } },
       h('button', { class: 'btn', text: 'Edit library…', on: { click: () => { dlg.close(); editLibrary(); } } }),
       targets.nodeId && state.byId.get(targets.nodeId) && !state.byId.get(targets.nodeId).library

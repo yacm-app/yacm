@@ -257,7 +257,7 @@ test('Type to many has an All box that follows the session boxes', async ({ page
   await connectTabs(page, ['core-sw1', 'core-sw2']);
   await page.getByRole('button', { name: 'Type to many' }).click();
   const bar = page.locator('#broadcast');
-  await expect(bar).toContainText('Typing goes to (2 of 2):');
+  await expect(bar).toContainText('Commands go to (2 of 2):');
   const all = bar.getByLabel('All sessions');
   const boxes = bar.locator('label:not(.all) input');
   await expect(boxes).toHaveCount(2);
@@ -298,13 +298,56 @@ test('Type to many: Space after a command from the field pages on, and a ticked 
   await line.fill('show ver');
   await line.press(' ');
   await expect(line).toHaveValue('show ver ');
-  // After a click on a session box the keys go back to the terminal, so a
-  // Space does not clear the box again.
+  // After a click on a session box the keys go to the command field, so a
+  // Space does not tick the box again.
   const box = bar.locator('label:not(.all) input').nth(1);
   await box.uncheck();
-  await page.keyboard.press(' ');
+  await expect(line).toBeFocused();
+  await page.keyboard.press('x');
   await expect(box).not.toBeChecked();
-  expect(await page.evaluate(() => document.activeElement?.closest('.term') !== null)).toBe(true);
+  await expect(line).toHaveValue('show ver x');
+  expect(errors).toEqual([]);
+});
+
+test('Type to many: a terminal and saved commands send to their own session only, the field to the checked ones', async ({ page }) => {
+  const errors = await open(page);
+  const ids = await connectTabs(page, ['core-sw1', 'core-sw2']);
+  await page.getByRole('button', { name: 'Type to many' }).click();
+  const bar = page.locator('#broadcast');
+  const line = bar.getByPlaceholder('Send one command to the checked sessions');
+  // Switching it on puts the keys in the field.
+  await expect(line).toBeFocused();
+  await expect(bar.locator('label:not(.all) input:checked')).toHaveCount(2);
+  // Typing and pasting in the active terminal (core-sw2, both ticked) go to it alone.
+  await page.locator('.term:not([hidden]) .xterm-helper-textarea').focus();
+  await page.keyboard.type('ip ssh');
+  const writes = (await calls(page, 'Write')).map(c => c.args);
+  expect(writes.map(w => w[0])).toEqual(Array(writes.length).fill(ids[1]));
+  expect(writes.map(w => w[1]).join('')).toBe('ip ssh');
+  expect(await calls(page, 'Broadcast')).toEqual([]);
+  // A saved command goes to the active session only.
+  await page.locator('#statusbar').getByRole('button', { name: 'Commands…' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Send a command' });
+  await expect(dlg.locator('.target')).toContainText('Sends to core-sw2.');
+  await page.keyboard.press('Escape');
+  await expect(dlg).toHaveCount(0);
+  // The field sends to both.
+  await line.fill('show clock');
+  await line.press('Enter');
+  expect((await calls(page, 'Broadcast')).map(c => c.args)).toEqual([[ids, 'show clock\r']]);
+  expect(errors).toEqual([]);
+});
+
+test('Type to many keeps a half typed command when a session opens', async ({ page }) => {
+  const errors = await open(page);
+  await connectTabs(page, ['core-sw1']);
+  await page.getByRole('button', { name: 'Type to many' }).click();
+  const bar = page.locator('#broadcast');
+  const line = bar.getByPlaceholder('Send one command to the checked sessions');
+  await line.fill('show inter');
+  await page.locator('#tree .row.session', { hasText: 'core-sw2' }).dblclick();
+  await expect(bar.locator('label:not(.all)')).toHaveCount(2);
+  await expect(line).toHaveValue('show inter');
   expect(errors).toEqual([]);
 });
 
@@ -1701,7 +1744,7 @@ test('Type to many keeps the command field on its own full-width row, however ma
   expect(fb.width).toBeGreaterThan(bb.width * 0.7);
   // Many sessions scroll instead of pushing the terminal away.
   expect(tb.height).toBeLessThan(120);
-  await expect(bar.locator('.targets strong')).toHaveText('Typing goes to (1 of 30):');
+  await expect(bar.locator('.targets strong')).toHaveText('Commands go to (1 of 30):');
   expect(errors).toEqual([]);
 });
 
